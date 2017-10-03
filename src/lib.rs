@@ -31,6 +31,8 @@ use std::rc::{Rc};
 use std::sync::{Arc, RwLock};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+pub mod array;
+
 //static STREAM_POOL_UID_COUNTER: AtomicU64 = ATOMIC_U64_INIT;
 
 #[derive(Clone, Copy)]
@@ -59,8 +61,6 @@ pub struct DeviceStream {
   dev_id:       DeviceId,
   raw_stream:   Arc<CudaStream>,
   sync_event:   Arc<CudaEvent>,
-  workspace_sz: Arc<AtomicUsize>,
-  workspace:    Option<Arc<DeviceAllocMem<u8>>>,
 }
 
 impl DeviceStream {
@@ -74,8 +74,6 @@ impl DeviceStream {
       dev_id:       dev_id,
       raw_stream:   raw_stream,
       sync_event:   sync_event,
-      workspace_sz: Arc::new(AtomicUsize::new(0)),
-      workspace:    None,
     }
   }
 
@@ -96,13 +94,13 @@ pub struct DeviceArchSummary {
 }
 
 pub struct DeviceStreamPool {
-  //uid:      u64,
   dev_id:   DeviceId,
-  dev_prop: Arc<cudaDeviceProp>,
   arch_sum: DeviceArchSummary,
   stream:   Arc<DeviceStream>,
   cublas_h: Arc<CublasHandle>,
   cudnn_h:  Option<Arc<CudnnHandle>>,
+  workspace_sz: Arc<AtomicUsize>,
+  workspace:    Option<Arc<DeviceAllocMem<u8>>>,
 }
 
 impl DeviceStreamPool {
@@ -111,9 +109,7 @@ impl DeviceStreamPool {
     unimplemented!();
   }
 
-  pub fn new(dev_id: DeviceId, pool_size: usize) -> DeviceStreamPool {
-    //let uid = STREAM_POOL_UID_COUNTER.fetch_add(1, Ordering::AcqRel) + 1;
-    //assert!(0 != uid);
+  pub fn new(dev_id: DeviceId/*, pool_size: usize*/) -> DeviceStreamPool {
     let dev = dev_id.0;
     let dev_prop = Arc::new(CudaDevice::get_properties(dev as usize).unwrap());
     /*println!("DEBUG: cuda: device: index: {} smp count: {}", dev, dev_prop.multiprocessor_count);
@@ -128,13 +124,13 @@ impl DeviceStreamPool {
     let stream = Arc::new(DeviceStream::new(dev_id));
     let cublas_h = Arc::new(CublasHandle::create().unwrap());
     DeviceStreamPool{
-      //uid:      uid,
       dev_id:   dev_id,
-      dev_prop: dev_prop,
       arch_sum: arch_sum,
       stream:   stream,
       cublas_h: cublas_h,
       cudnn_h:  None,
+      workspace_sz: Arc::new(AtomicUsize::new(0)),
+      workspace:    None,
     }
   }
 
