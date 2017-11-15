@@ -36,9 +36,9 @@ pub mod array;
 //static STREAM_POOL_UID_COUNTER: AtomicU64 = ATOMIC_U64_INIT;
 
 #[derive(Clone, Copy)]
-pub struct DeviceId(pub i32);
+pub struct GPUDeviceId(pub i32);
 
-impl DeviceId {
+impl GPUDeviceId {
   /*pub fn enumerate() -> Vec<DeviceId> {
     // TODO
     unimplemented!();
@@ -49,28 +49,20 @@ impl DeviceId {
   }
 }
 
-#[derive(Clone)]
-pub struct DevicePlacement {
-  dev_id:   DeviceId,
-}
-
-impl DevicePlacement {
-}
-
-pub struct DeviceStream {
-  dev_id:       DeviceId,
+pub struct GPUDeviceStream {
+  dev_id:       GPUDeviceId,
   raw_stream:   Arc<CudaStream>,
   sync_event:   Arc<CudaEvent>,
 }
 
-impl DeviceStream {
-  pub fn new(dev_id: DeviceId) -> Self {
+impl GPUDeviceStream {
+  pub fn new(dev_id: GPUDeviceId) -> Self {
     let prev_dev = CudaDevice::get_current().unwrap();
     CudaDevice::set_current(dev_id.0).unwrap();
     let raw_stream = Arc::new(CudaStream::create().unwrap());
     let sync_event = Arc::new(CudaEvent::create_fastest().unwrap());
     CudaDevice::set_current(prev_dev).unwrap();
-    DeviceStream{
+    GPUDeviceStream{
       dev_id:       dev_id,
       raw_stream:   raw_stream,
       sync_event:   sync_event,
@@ -87,85 +79,83 @@ impl DeviceStream {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct DeviceArchSummary {
+pub struct GPUDeviceArchSummary {
   pub mp_count:             usize,
   pub sharedmem_sz_per_mp:  usize,
   pub register_sz_per_mp:   usize,
 }
 
-pub struct DeviceStreamPool {
-  dev_id:   DeviceId,
-  arch_sum: DeviceArchSummary,
-  stream:   Arc<DeviceStream>,
+#[derive(Clone)]
+pub struct GPUDeviceStreamPool {
+  dev_id:   GPUDeviceId,
+  arch_sum: GPUDeviceArchSummary,
+  stream:   Arc<GPUDeviceStream>,
   cublas_h: Arc<CublasHandle>,
-  cudnn_h:  Option<Arc<CudnnHandle>>,
-  workspace_sz: Arc<AtomicUsize>,
-  workspace:    Option<Arc<DeviceAllocMem<u8>>>,
+  //cudnn_h:  Arc<CudnnHandle>,
+  //workspace_sz: Arc<AtomicUsize>,
+  //workspace:    Option<Arc<GPUDeviceAllocMem<u8>>>,
 }
 
-impl DeviceStreamPool {
-  pub fn implicit() -> Self {
-    // FIXME
-    unimplemented!();
-  }
-
-  pub fn new(dev_id: DeviceId/*, pool_size: usize*/) -> DeviceStreamPool {
+impl GPUDeviceStreamPool {
+  pub fn new(dev_id: GPUDeviceId/*, pool_size: usize*/) -> GPUDeviceStreamPool {
     let dev = dev_id.0;
     let dev_prop = Arc::new(CudaDevice::get_properties(dev as usize).unwrap());
     /*println!("DEBUG: cuda: device: index: {} smp count: {}", dev, dev_prop.multiprocessor_count);
     println!("DEBUG: cuda: device: index: {} shared mem per smp: {}", dev, dev_prop.shared_mem_per_multiprocessor);
     println!("DEBUG: cuda: device: index: {} registers per smp: {}", dev, dev_prop.regs_per_multiprocessor);*/
-    let arch_sum = DeviceArchSummary{
+    let arch_sum = GPUDeviceArchSummary{
       mp_count:             dev_prop.multiProcessorCount as _,
       sharedmem_sz_per_mp:  dev_prop.sharedMemPerMultiprocessor as _,
       register_sz_per_mp:   dev_prop.regsPerMultiprocessor as _,
     };
-    println!("DEBUG: DeviceStreamPool: dev: {} arch: {:?}", dev, arch_sum);
-    let stream = Arc::new(DeviceStream::new(dev_id));
+    println!("DEBUG: GPUDeviceStreamPool: dev: {} arch: {:?}", dev, arch_sum);
+    let stream = Arc::new(GPUDeviceStream::new(dev_id));
     let cublas_h = Arc::new(CublasHandle::create().unwrap());
-    DeviceStreamPool{
+    GPUDeviceStreamPool{
       dev_id:   dev_id,
       arch_sum: arch_sum,
       stream:   stream,
       cublas_h: cublas_h,
-      cudnn_h:  None,
-      workspace_sz: Arc::new(AtomicUsize::new(0)),
-      workspace:    None,
+      //cudnn_h:  None,
+      //workspace_sz: Arc::new(AtomicUsize::new(0)),
+      //workspace:    None,
     }
   }
 
-  pub fn conn(&self) -> DeviceConn {
+  pub fn conn<'a>(&'a self) -> GPUDeviceConn<'a> {
     let prev_dev = CudaDevice::get_current().unwrap();
     CudaDevice::set_current(self.dev_id.0).unwrap();
-    DeviceConn{
+    GPUDeviceConn{
       dev:      self.dev_id,
-      pop_dev:  DeviceId(prev_dev),
+      pop_dev:  GPUDeviceId(prev_dev),
       stream:   self.stream.clone(),
       cublas_h: self.cublas_h.clone(),
+      borrow:   &(),
     }
   }
 }
 
 #[derive(Clone)]
-pub struct DeviceConn {
-  dev:      DeviceId,
-  pop_dev:  DeviceId,
-  stream:   Arc<DeviceStream>,
+pub struct GPUDeviceConn<'a> {
+  dev:      GPUDeviceId,
+  pop_dev:  GPUDeviceId,
+  stream:   Arc<GPUDeviceStream>,
   cublas_h: Arc<CublasHandle>,
+  borrow:   &'a (),
 }
 
-impl Drop for DeviceConn {
+impl<'a> Drop for GPUDeviceConn<'a> {
   fn drop(&mut self) {
     CudaDevice::set_current(self.pop_dev.0).unwrap();
   }
 }
 
-impl DeviceConn {
-  pub fn device(&self) -> DeviceId {
+impl<'a> GPUDeviceConn<'a> {
+  pub fn device(&self) -> GPUDeviceId {
     self.dev
   }
 
-  pub fn stream(&self) -> Arc<DeviceStream> {
+  pub fn stream(&self) -> Arc<GPUDeviceStream> {
     self.stream.clone()
   }
 
@@ -174,29 +164,30 @@ impl DeviceConn {
   }
 }
 
-pub trait DeviceMem<T> where T: Copy {
+pub trait GPUDeviceMem<T> where T: Copy {
   fn as_dptr(&self) -> *const T;
   fn as_mut_dptr(&self) -> *mut T;
   fn len(&self) -> usize;
 }
 
-pub struct DeviceAllocMem<T> {
-  dev:  DeviceId,
+pub struct GPUDeviceAllocMem<T> {
+  dev:  GPUDeviceId,
   dptr: *mut T,
   len:  usize,
   psz:  usize,
 }
 
-impl<T> DeviceAllocMem<T> where T: Copy {
-  pub unsafe fn alloc(len: usize, conn: DeviceConn) -> DeviceAllocMem<T> where T: Copy {
+impl<T> GPUDeviceAllocMem<T> where T: Copy {
+  pub unsafe fn alloc(len: usize, conn: GPUDeviceConn) -> GPUDeviceAllocMem<T> where T: Copy {
+    println!("DEBUG: GPUDeviceAllocMem: alloc len: {}", len);
     assert!(len <= <u32>::max_value() as usize,
-        "device memory size should not exceed 2**31-1 bytes");
+        "device memory size should not exceed 2**31-1 elements");
     let dptr = match cuda_alloc_device::<T>(len) {
-      Err(e) => panic!("DeviceAllocMem allocation failed: {:?}", e),
+      Err(e) => panic!("GPUDeviceAllocMem allocation failed: {:?}", e),
       Ok(dptr) => dptr,
     };
     assert!(!dptr.is_null());
-    DeviceAllocMem{
+    GPUDeviceAllocMem{
       dev:  conn.device(),
       dptr: dptr,
       len:  len,
@@ -205,7 +196,7 @@ impl<T> DeviceAllocMem<T> where T: Copy {
   }
 }
 
-impl<T> DeviceMem<T> for DeviceAllocMem<T> where T: Copy {
+impl<T> GPUDeviceMem<T> for GPUDeviceAllocMem<T> where T: Copy {
   fn as_dptr(&self) -> *const T {
     self.dptr
   }
@@ -219,17 +210,17 @@ impl<T> DeviceMem<T> for DeviceAllocMem<T> where T: Copy {
   }
 }
 
-pub struct DeviceToken {
-  //producers:    Arc<AtomicArcList<DeviceStream>>,
-  producers:    Arc<RwLock<Vec<Arc<DeviceStream>>>>,
+pub struct GPUDeviceToken {
+  //producers:    Arc<AtomicArcList<GPUDeviceStream>>,
+  producers:    Arc<RwLock<Vec<Arc<GPUDeviceStream>>>>,
 }
 
-impl DeviceToken {
-  pub fn post_excl(&self, stream: Arc<DeviceStream>) {
+impl GPUDeviceToken {
+  pub fn post_excl(&self, stream: Arc<GPUDeviceStream>) {
     self.producers.write().unwrap().push(stream);
   }
 
-  pub fn wait_excl(&self, stream: Arc<DeviceStream>) {
+  pub fn wait_excl(&self, stream: Arc<GPUDeviceStream>) {
     let mut producers_lock = self.producers.write().unwrap();
     let producers: Vec<_> = producers_lock.drain(..).collect();
     for producer in producers.iter() {
@@ -243,21 +234,21 @@ impl DeviceToken {
   }
 }
 
-pub struct DevicePost {
-  stream:   Arc<DeviceStream>,
-  xtokens:  Vec<DeviceToken>,
-  stokens:  Vec<DeviceToken>,
+pub struct GPUDevicePost {
+  stream:   Arc<GPUDeviceStream>,
+  xtokens:  Vec<GPUDeviceToken>,
+  stokens:  Vec<GPUDeviceToken>,
 }
 
-pub struct DeviceWait {
-  stream:   Arc<DeviceStream>,
-  xtokens:  Vec<DeviceToken>,
-  stokens:  Vec<DeviceToken>,
+pub struct GPUDeviceWait {
+  stream:   Arc<GPUDeviceStream>,
+  xtokens:  Vec<GPUDeviceToken>,
+  stokens:  Vec<GPUDeviceToken>,
 }
 
 extern "C" fn dataflow_post(stream: cudaStream_t, status: cudaError_t, post_raw_data: *mut c_void) {
   // TODO
-  let post: Arc<DevicePost> = unsafe { Arc::from_raw(transmute(post_raw_data)) };
+  let post: Arc<GPUDevicePost> = unsafe { Arc::from_raw(transmute(post_raw_data)) };
   for xtoken in post.xtokens.iter() {
     xtoken.post_excl(post.stream.clone());
   }
@@ -266,20 +257,20 @@ extern "C" fn dataflow_post(stream: cudaStream_t, status: cudaError_t, post_raw_
 
 extern "C" fn dataflow_wait(stream: cudaStream_t, status: cudaError_t, wait_raw_data: *mut c_void) {
   // TODO
-  let wait: Arc<DeviceWait> = unsafe { Arc::from_raw(transmute(wait_raw_data)) };
+  let wait: Arc<GPUDeviceWait> = unsafe { Arc::from_raw(transmute(wait_raw_data)) };
   for xtoken in wait.xtokens.iter() {
     xtoken.wait_excl(wait.stream.clone());
   }
   assert!(wait.stokens.is_empty(), "shared tokens are not supported yet");
 }
 
-/*pub struct DeviceMemRef<T> where T: Copy {
-  mem:  Rc<DeviceMem<T>>,
+/*pub struct GPUDeviceMemRef<T> where T: Copy {
+  mem:  Rc<GPUDeviceMem<T>>,
   dptr: *mut T,
   len:  usize,
 }
 
-impl<T> DeviceMemRef<T> where T: Copy {
+impl<T> GPUDeviceMemRef<T> where T: Copy {
   pub unsafe fn as_ptr(&self) -> *const T {
     self.dptr
   }
@@ -293,13 +284,13 @@ impl<T> DeviceMemRef<T> where T: Copy {
   }
 }
 
-pub struct DeviceMemRefMut<T> where T: Copy {
-  mem:  Rc<DeviceMem<T>>,
+pub struct GPUDeviceMemRefMut<T> where T: Copy {
+  mem:  Rc<GPUDeviceMem<T>>,
   dptr: *mut T,
   len:  usize,
 }
 
-impl<T> DeviceMemRefMut<T> where T: Copy {
+impl<T> GPUDeviceMemRefMut<T> where T: Copy {
   pub unsafe fn as_ptr(&self) -> *const T {
     self.dptr
   }

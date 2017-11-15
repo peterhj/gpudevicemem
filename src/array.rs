@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-use super::{DeviceConn, DeviceMem};
+use super::{GPUDeviceConn, GPUDeviceMem, GPUDeviceAllocMem};
 
 use std::ops::{Range, RangeFrom, RangeTo, RangeFull};
 use std::sync::{Arc};
@@ -431,11 +431,12 @@ impl ArrayIndex for Index5d {
   }
 }
 
-pub struct DeviceArray<Idx, T> where T: Copy {
+#[derive(Clone)]
+pub struct GPUDeviceArray<Idx, T> where T: Copy {
   size:     Idx,
   offset:   Idx,
   stride:   Idx,
-  mem:      Arc<DeviceMem<T>>,
+  mem:      Arc<GPUDeviceMem<T>>,
 }
 
 pub trait Array {
@@ -451,14 +452,14 @@ pub trait BatchArray: Array {
   fn set_batch_size(&mut self, new_batch_sz: usize);
 }
 
-pub trait DeviceArrayZeros: Array {
-  fn zeros(size: Self::Idx, conn: &DeviceConn) -> Self where Self: Sized;
-  //fn zeros_with_offset_stride(size: Self::Idx, offset: Self::Idx, stride: Self::Idx, conn: &DeviceConn) -> Self where Self: Sized;
+pub trait GPUDeviceArrayZeros: Array {
+  fn zeros(size: Self::Idx, conn: GPUDeviceConn) -> Self where Self: Sized;
+  //fn zeros_with_offset_stride(size: Self::Idx, offset: Self::Idx, stride: Self::Idx, conn: &GPUDeviceConn) -> Self where Self: Sized;
 }
 
-pub trait DeviceBatchArrayZeros: BatchArray {
-  fn zeros(size: Self::Idx, batch_sz: usize, conn: &DeviceConn) -> Self where Self: Sized;
-  //fn zeros_with_offset_stride(size: Self::Idx, offset: Self::Idx, stride: Self::Idx, batch_sz: usize, conn: &DeviceConn) -> Self where Self: Sized;
+pub trait GPUDeviceBatchArrayZeros: BatchArray {
+  fn zeros(size: Self::Idx, batch_sz: usize, conn: GPUDeviceConn) -> Self where Self: Sized;
+  //fn zeros_with_offset_stride(size: Self::Idx, offset: Self::Idx, stride: Self::Idx, batch_sz: usize, conn: &GPUDeviceConn) -> Self where Self: Sized;
 }
 
 pub trait AsView {
@@ -489,21 +490,33 @@ pub trait View<Idx> {
   fn view(self, idx: Idx) -> Self where Self: Sized;
 }
 
-pub type DeviceScalar<T>  = DeviceArray<Index0d, T>;
-pub type DeviceArray1d<T> = DeviceArray<Index1d, T>;
-pub type DeviceArray2d<T> = DeviceArray<Index2d, T>;
-pub type DeviceArray3d<T> = DeviceArray<Index3d, T>;
-pub type DeviceArray4d<T> = DeviceArray<Index4d, T>;
-pub type DeviceArray5d<T> = DeviceArray<Index5d, T>;
+pub type GPUDeviceScalar<T>  = GPUDeviceArray<Index0d, T>;
+pub type GPUDeviceArray1d<T> = GPUDeviceArray<Index1d, T>;
+pub type GPUDeviceArray2d<T> = GPUDeviceArray<Index2d, T>;
+pub type GPUDeviceArray3d<T> = GPUDeviceArray<Index3d, T>;
+pub type GPUDeviceArray4d<T> = GPUDeviceArray<Index4d, T>;
+pub type GPUDeviceArray5d<T> = GPUDeviceArray<Index5d, T>;
 
-impl<Idx, T> DeviceArrayZeros for DeviceArray<Idx, T> where Idx: Copy, T: Copy {
-  fn zeros(size: Idx, conn: &DeviceConn) -> Self {
+/*impl<Idx, T> Clone for GPUDeviceArray<Idx, T> where Idx: Copy, T: Copy {
+  fn clone(&self) -> Self {
     // TODO
-    unimplemented!();
+    panic!("unimplemented: cloning arrays");
+  }
+}*/
+
+impl<Idx, T> GPUDeviceArrayZeros for GPUDeviceArray<Idx, T> where Idx: ArrayIndex + Copy, T: Copy + 'static {
+  fn zeros(size: Idx, conn: GPUDeviceConn) -> Self {
+    //let mem: Arc<GPUDeviceAllocMem<T>> = ;
+    GPUDeviceArray{
+      size:     size,
+      offset:   Idx::zero(),
+      stride:   size.to_packed_stride(),
+      mem:      Arc::new(unsafe { GPUDeviceAllocMem::<T>::alloc(size.flat_len(), conn) }),
+    }
   }
 }
 
-impl<Idx, T> Array for DeviceArray<Idx, T> where Idx: Copy, T: Copy {
+impl<Idx, T> Array for GPUDeviceArray<Idx, T> where Idx: Copy, T: Copy {
   type Idx = Idx;
 
   fn size(&self) -> Idx {
@@ -511,24 +524,24 @@ impl<Idx, T> Array for DeviceArray<Idx, T> where Idx: Copy, T: Copy {
   }
 }
 
-impl<Idx, T> AsView for DeviceArray<Idx, T> where Idx: Copy, T: Copy {
-  type ViewTy = DeviceArrayView<Idx, T>;
+impl<Idx, T> AsView for GPUDeviceArray<Idx, T> where Idx: Copy, T: Copy {
+  type ViewTy = GPUDeviceArrayView<Idx, T>;
 
-  fn as_view(&self) -> DeviceArrayView<Idx, T> {
+  fn as_view(&self) -> GPUDeviceArrayView<Idx, T> {
     // TODO
     unimplemented!();
   }
 }
 
-impl<Idx, T> FlatView for DeviceArray<Idx, T> where Idx: ArrayIndex + Copy, T: Copy {
-  type FlatViewTy = DeviceArrayView1d<T>;
+impl<Idx, T> FlatView for GPUDeviceArray<Idx, T> where Idx: ArrayIndex + Copy, T: Copy {
+  type FlatViewTy = GPUDeviceArrayView1d<T>;
 
-  fn flat_view(&self) -> Option<DeviceArrayView1d<T>> {
+  fn flat_view(&self) -> Option<GPUDeviceArrayView1d<T>> {
     if !self.size.is_packed(&self.stride) {
       None
     } else {
       let flat_size = self.size.flat_len();
-      Some(DeviceArrayView{
+      Some(GPUDeviceArrayView{
         size:   flat_size,
         offset: 0,
         stride: flat_size.to_packed_stride(),
@@ -538,22 +551,22 @@ impl<Idx, T> FlatView for DeviceArray<Idx, T> where Idx: ArrayIndex + Copy, T: C
   }
 }
 
-pub struct DeviceInnerBatchArray<Idx, T> where T: Copy {
+pub struct GPUDeviceInnerBatchArray<Idx, T> where T: Copy {
   size:         Idx,
   offset:       Idx,
   stride:       Idx,
   batch_sz:     usize,
   max_batch_sz: usize,
-  mem:          Arc<DeviceMem<T>>,
+  mem:          Arc<GPUDeviceMem<T>>,
 }
 
-pub type DeviceInnerBatchScalar<T>  = DeviceInnerBatchArray<Index0d, T>;
-pub type DeviceInnerBatchArray1d<T> = DeviceInnerBatchArray<Index1d, T>;
-pub type DeviceInnerBatchArray2d<T> = DeviceInnerBatchArray<Index2d, T>;
-pub type DeviceInnerBatchArray3d<T> = DeviceInnerBatchArray<Index3d, T>;
-pub type DeviceInnerBatchArray4d<T> = DeviceInnerBatchArray<Index4d, T>;
+pub type GPUDeviceInnerBatchScalar<T>  = GPUDeviceInnerBatchArray<Index0d, T>;
+pub type GPUDeviceInnerBatchArray1d<T> = GPUDeviceInnerBatchArray<Index1d, T>;
+pub type GPUDeviceInnerBatchArray2d<T> = GPUDeviceInnerBatchArray<Index2d, T>;
+pub type GPUDeviceInnerBatchArray3d<T> = GPUDeviceInnerBatchArray<Index3d, T>;
+pub type GPUDeviceInnerBatchArray4d<T> = GPUDeviceInnerBatchArray<Index4d, T>;
 
-impl<Idx, T> Array for DeviceInnerBatchArray<Idx, T> where Idx: Copy, T: Copy {
+impl<Idx, T> Array for GPUDeviceInnerBatchArray<Idx, T> where Idx: Copy, T: Copy {
   type Idx = Idx;
 
   fn size(&self) -> Idx {
@@ -561,7 +574,7 @@ impl<Idx, T> Array for DeviceInnerBatchArray<Idx, T> where Idx: Copy, T: Copy {
   }
 }
 
-impl<Idx, T> BatchArray for DeviceInnerBatchArray<Idx, T> where Idx: Copy, T: Copy {
+impl<Idx, T> BatchArray for GPUDeviceInnerBatchArray<Idx, T> where Idx: Copy, T: Copy {
   fn batch_size(&self) -> usize {
     self.batch_sz
   }
@@ -571,39 +584,39 @@ impl<Idx, T> BatchArray for DeviceInnerBatchArray<Idx, T> where Idx: Copy, T: Co
   }
 }
 
-impl<Idx, T> AsView for DeviceInnerBatchArray<Idx, T> where Idx: ArrayIndex + Copy, T: Copy {
-  type ViewTy = DeviceArrayView<Idx::Above, T>;
+impl<Idx, T> AsView for GPUDeviceInnerBatchArray<Idx, T> where Idx: ArrayIndex + Copy, T: Copy {
+  type ViewTy = GPUDeviceArrayView<Idx::Above, T>;
 
-  fn as_view(&self) -> DeviceArrayView<Idx::Above, T> {
+  fn as_view(&self) -> GPUDeviceArrayView<Idx::Above, T> {
     let view_size = self.size.prepend(self.batch_sz);
     // TODO
     unimplemented!();
   }
 }
 
-pub struct DeviceOuterBatchArray<Idx, T> where T: Copy {
+pub struct GPUDeviceOuterBatchArray<Idx, T> where T: Copy {
   size:         Idx,
   offset:       Idx,
   stride:       Idx,
   batch_sz:     usize,
   max_batch_sz: usize,
-  mem:          Arc<DeviceMem<T>>,
+  mem:          Arc<GPUDeviceMem<T>>,
 }
 
-pub type DeviceOuterBatchScalar<T>  = DeviceOuterBatchArray<Index0d, T>;
-pub type DeviceOuterBatchArray1d<T> = DeviceOuterBatchArray<Index1d, T>;
-pub type DeviceOuterBatchArray2d<T> = DeviceOuterBatchArray<Index2d, T>;
-pub type DeviceOuterBatchArray3d<T> = DeviceOuterBatchArray<Index3d, T>;
-pub type DeviceOuterBatchArray4d<T> = DeviceOuterBatchArray<Index4d, T>;
+pub type GPUDeviceOuterBatchScalar<T>  = GPUDeviceOuterBatchArray<Index0d, T>;
+pub type GPUDeviceOuterBatchArray1d<T> = GPUDeviceOuterBatchArray<Index1d, T>;
+pub type GPUDeviceOuterBatchArray2d<T> = GPUDeviceOuterBatchArray<Index2d, T>;
+pub type GPUDeviceOuterBatchArray3d<T> = GPUDeviceOuterBatchArray<Index3d, T>;
+pub type GPUDeviceOuterBatchArray4d<T> = GPUDeviceOuterBatchArray<Index4d, T>;
 
-impl<Idx, T> DeviceBatchArrayZeros for DeviceOuterBatchArray<Idx, T> where Idx: Copy, T: Copy {
-  fn zeros(size: Idx, batch_sz: usize, conn: &DeviceConn) -> Self {
+impl<Idx, T> GPUDeviceBatchArrayZeros for GPUDeviceOuterBatchArray<Idx, T> where Idx: Copy, T: Copy {
+  fn zeros(size: Idx, batch_sz: usize, conn: GPUDeviceConn) -> Self {
     // TODO
     unimplemented!();
   }
 }
 
-impl<Idx, T> Array for DeviceOuterBatchArray<Idx, T> where Idx: Copy, T: Copy {
+impl<Idx, T> Array for GPUDeviceOuterBatchArray<Idx, T> where Idx: Copy, T: Copy {
   type Idx = Idx;
 
   fn size(&self) -> Idx {
@@ -611,7 +624,7 @@ impl<Idx, T> Array for DeviceOuterBatchArray<Idx, T> where Idx: Copy, T: Copy {
   }
 }
 
-impl<Idx, T> BatchArray for DeviceOuterBatchArray<Idx, T> where Idx: Copy, T: Copy {
+impl<Idx, T> BatchArray for GPUDeviceOuterBatchArray<Idx, T> where Idx: Copy, T: Copy {
   fn batch_size(&self) -> usize {
     self.batch_sz
   }
@@ -621,14 +634,14 @@ impl<Idx, T> BatchArray for DeviceOuterBatchArray<Idx, T> where Idx: Copy, T: Co
   }
 }
 
-impl<Idx, T> AsView for DeviceOuterBatchArray<Idx, T> where Idx: ArrayIndex + Copy, T: Copy {
-  type ViewTy = DeviceArrayView<Idx::Above, T>;
+impl<Idx, T> AsView for GPUDeviceOuterBatchArray<Idx, T> where Idx: ArrayIndex + Copy, T: Copy {
+  type ViewTy = GPUDeviceArrayView<Idx::Above, T>;
 
-  fn as_view(&self) -> DeviceArrayView<Idx::Above, T> {
+  fn as_view(&self) -> GPUDeviceArrayView<Idx::Above, T> {
     let view_size = self.size.append(self.batch_sz);
     let view_offset = self.offset.append(0);
     let view_stride = self.stride.stride_append_packed(self.size.outside());
-    DeviceArrayView{
+    GPUDeviceArrayView{
       size:     view_size,
       offset:   view_offset,
       stride:   view_stride,
@@ -637,15 +650,15 @@ impl<Idx, T> AsView for DeviceOuterBatchArray<Idx, T> where Idx: ArrayIndex + Co
   }
 }
 
-impl<Idx, T> FlatView for DeviceOuterBatchArray<Idx, T> where Idx: ArrayIndex + Copy, T: Copy {
-  type FlatViewTy = DeviceArrayView1d<T>;
+impl<Idx, T> FlatView for GPUDeviceOuterBatchArray<Idx, T> where Idx: ArrayIndex + Copy, T: Copy {
+  type FlatViewTy = GPUDeviceArrayView1d<T>;
 
-  fn flat_view(&self) -> Option<DeviceArrayView1d<T>> {
+  fn flat_view(&self) -> Option<GPUDeviceArrayView1d<T>> {
     if !self.size.is_packed(&self.stride) {
       None
     } else {
       let flat_size = self.size.flat_len() * self.batch_sz;
-      Some(DeviceArrayView{
+      Some(GPUDeviceArrayView{
         size:   flat_size,
         offset: 0,
         stride: flat_size.to_packed_stride(),
@@ -656,33 +669,33 @@ impl<Idx, T> FlatView for DeviceOuterBatchArray<Idx, T> where Idx: ArrayIndex + 
 }
 
 #[derive(Clone)]
-pub struct DeviceArrayView<Idx, T> where T: Copy {
+pub struct GPUDeviceArrayView<Idx, T> where T: Copy {
   size:     Idx,
   offset:   Idx,
   stride:   Idx,
-  mem:      Arc<DeviceMem<T>>,
+  mem:      Arc<GPUDeviceMem<T>>,
 }
 
-pub type DeviceScalarView<T>  = DeviceArrayView<Index0d, T>;
-pub type DeviceArrayView1d<T> = DeviceArrayView<Index1d, T>;
-pub type DeviceArrayView2d<T> = DeviceArrayView<Index2d, T>;
-pub type DeviceArrayView3d<T> = DeviceArrayView<Index3d, T>;
-pub type DeviceArrayView4d<T> = DeviceArrayView<Index4d, T>;
-pub type DeviceArrayView5d<T> = DeviceArrayView<Index5d, T>;
+pub type GPUDeviceScalarView<T>  = GPUDeviceArrayView<Index0d, T>;
+pub type GPUDeviceArrayView1d<T> = GPUDeviceArrayView<Index1d, T>;
+pub type GPUDeviceArrayView2d<T> = GPUDeviceArrayView<Index2d, T>;
+pub type GPUDeviceArrayView3d<T> = GPUDeviceArrayView<Index3d, T>;
+pub type GPUDeviceArrayView4d<T> = GPUDeviceArrayView<Index4d, T>;
+pub type GPUDeviceArrayView5d<T> = GPUDeviceArrayView<Index5d, T>;
 
-/*pub struct DeviceArrayViewMut<Idx, T> where T: Copy {
+/*pub struct GPUDeviceArrayViewMut<Idx, T> where T: Copy {
   size:     Idx,
   stride:   Idx,
-  mem:      Arc<DeviceMem<T>>,
+  mem:      Arc<GPUDeviceMem<T>>,
 }
 
-pub type DeviceScalarViewMut<T>  = DeviceArrayViewMut<Index0d, T>;
-pub type DeviceArrayViewMut1d<T> = DeviceArrayViewMut<Index1d, T>;
-pub type DeviceArrayViewMut2d<T> = DeviceArrayViewMut<Index2d, T>;
-pub type DeviceArrayViewMut3d<T> = DeviceArrayViewMut<Index3d, T>;
-pub type DeviceArrayViewMut4d<T> = DeviceArrayViewMut<Index4d, T>;*/
+pub type GPUDeviceScalarViewMut<T>  = GPUDeviceArrayViewMut<Index0d, T>;
+pub type GPUDeviceArrayViewMut1d<T> = GPUDeviceArrayViewMut<Index1d, T>;
+pub type GPUDeviceArrayViewMut2d<T> = GPUDeviceArrayViewMut<Index2d, T>;
+pub type GPUDeviceArrayViewMut3d<T> = GPUDeviceArrayViewMut<Index3d, T>;
+pub type GPUDeviceArrayViewMut4d<T> = GPUDeviceArrayViewMut<Index4d, T>;*/
 
-impl<Idx, T> DeviceArrayView<Idx, T> where Idx: ArrayIndex + Copy, T: Copy {
+impl<Idx, T> GPUDeviceArrayView<Idx, T> where Idx: ArrayIndex + Copy, T: Copy {
   pub unsafe fn as_dptr(&self) -> *const T {
     self.mem.as_dptr().offset(self.offset.flat_index(&self.stride) as _)
   }
@@ -696,7 +709,7 @@ impl<Idx, T> DeviceArrayView<Idx, T> where Idx: ArrayIndex + Copy, T: Copy {
   }
 }
 
-impl<Idx, T> Array for DeviceArrayView<Idx, T> where Idx: ArrayIndex + Copy, T: Copy {
+impl<Idx, T> Array for GPUDeviceArrayView<Idx, T> where Idx: ArrayIndex + Copy, T: Copy {
   type Idx = Idx;
 
   fn size(&self) -> Idx {
@@ -704,25 +717,25 @@ impl<Idx, T> Array for DeviceArrayView<Idx, T> where Idx: ArrayIndex + Copy, T: 
   }
 }
 
-impl<Idx, T> DeviceArrayView<Idx, T> where Idx: ArrayIndex + Copy, T: Copy {
-  pub fn copy(&mut self, other: &DeviceArrayView<Idx, T>, conn: &DeviceConn) {
+impl<Idx, T> GPUDeviceArrayView<Idx, T> where Idx: ArrayIndex + Copy, T: Copy {
+  pub fn copy(&mut self, other: &GPUDeviceArrayView<Idx, T>, conn: &GPUDeviceConn) {
     // TODO
     unimplemented!();
   }
 
-  pub fn add(&mut self, other: &DeviceArrayView<Idx, T>, conn: &DeviceConn) {
+  pub fn add(&mut self, other: &GPUDeviceArrayView<Idx, T>, conn: &GPUDeviceConn) {
     // TODO
     unimplemented!();
   }
 }
 
-impl<Idx, Range, T> View<Range> for DeviceArrayView<Idx, T> where Idx: ArrayIndex + Copy, Range: ArrayRange<Idx> + Copy, T: Copy {
+impl<Idx, Range, T> View<Range> for GPUDeviceArrayView<Idx, T> where Idx: ArrayIndex + Copy, Range: ArrayRange<Idx> + Copy, T: Copy {
   fn view(self, range: Range) -> Self {
     // TODO: bounds check.
     let view_size = range.end(&self.size).sub(&range.start(&Idx::zero()));
     let view_offset = self.offset.add(&range.start(&Idx::zero()));
     let view_stride = self.stride;
-    DeviceArrayView{
+    GPUDeviceArrayView{
       size:     view_size,
       offset:   view_offset,
       stride:   view_stride,
