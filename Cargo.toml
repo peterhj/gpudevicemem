@@ -8,6 +8,7 @@ name = "devicemem_gpu"
 path = "src/lib.rs"
 
 [dependencies]
+arrayidx = { path = "../arrayidx" }
 cuda = { path = "../libcuda" }
 cuda_blas = { path = "../libcuda_blas" }
 cuda_dnn = { path = "../libcuda_dnn" }

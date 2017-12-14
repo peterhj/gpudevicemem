@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+extern crate arrayidx;
 extern crate cuda;
 extern crate cuda_blas;
 extern crate cuda_dnn;
@@ -22,7 +23,6 @@ use cuda::bind_ffi::runtime::{cudaError_t, cudaStream_t, cudaDeviceProp};
 use cuda::runtime_new::*;
 use cuda_blas::new::{CublasHandle};
 use cuda_dnn::v5::{CudnnHandle};
-//use densearray::prelude::*;
 
 //use libc::{c_void};
 use std::mem::{size_of, transmute};
@@ -49,20 +49,20 @@ impl GPUDeviceId {
   }
 }
 
-pub struct GPUDeviceStream {
+pub struct GPUDeviceRawStream {
   dev_id:       GPUDeviceId,
   raw_stream:   Arc<CudaStream>,
   sync_event:   Arc<CudaEvent>,
 }
 
-impl GPUDeviceStream {
+impl GPUDeviceRawStream {
   pub fn new(dev_id: GPUDeviceId) -> Self {
     let prev_dev = CudaDevice::get_current().unwrap();
     CudaDevice::set_current(dev_id.0).unwrap();
     let raw_stream = Arc::new(CudaStream::create().unwrap());
     let sync_event = Arc::new(CudaEvent::create_fastest().unwrap());
     CudaDevice::set_current(prev_dev).unwrap();
-    GPUDeviceStream{
+    GPUDeviceRawStream{
       dev_id:       dev_id,
       raw_stream:   raw_stream,
       sync_event:   sync_event,
@@ -89,11 +89,11 @@ pub struct GPUDeviceArchSummary {
 pub struct GPUDeviceStreamPool {
   dev_id:   GPUDeviceId,
   arch_sum: GPUDeviceArchSummary,
-  stream:   Arc<GPUDeviceStream>,
+  stream:   Arc<GPUDeviceRawStream>,
   cublas_h: Arc<CublasHandle>,
   //cudnn_h:  Arc<CudnnHandle>,
   //workspace_sz: Arc<AtomicUsize>,
-  //workspace:    Option<Arc<GPUDeviceAllocMem<u8>>>,
+  //workspace:    Option<Arc<GPUDeviceRawMem<u8>>>,
 }
 
 impl GPUDeviceStreamPool {
@@ -109,7 +109,7 @@ impl GPUDeviceStreamPool {
       register_sz_per_mp:   dev_prop.regsPerMultiprocessor as _,
     };
     println!("DEBUG: GPUDeviceStreamPool: dev: {} arch: {:?}", dev, arch_sum);
-    let stream = Arc::new(GPUDeviceStream::new(dev_id));
+    let stream = Arc::new(GPUDeviceRawStream::new(dev_id));
     let cublas_h = Arc::new(CublasHandle::create().unwrap());
     GPUDeviceStreamPool{
       dev_id:   dev_id,
@@ -139,8 +139,9 @@ impl GPUDeviceStreamPool {
 pub struct GPUDeviceConn<'a> {
   dev:      GPUDeviceId,
   pop_dev:  GPUDeviceId,
-  stream:   Arc<GPUDeviceStream>,
+  stream:   Arc<GPUDeviceRawStream>,
   cublas_h: Arc<CublasHandle>,
+  //cudnn_h:  Arc<CudnnHandle>,
   borrow:   &'a (),
 }
 
@@ -155,7 +156,7 @@ impl<'a> GPUDeviceConn<'a> {
     self.dev
   }
 
-  pub fn stream(&self) -> Arc<GPUDeviceStream> {
+  pub fn stream(&self) -> Arc<GPUDeviceRawStream> {
     self.stream.clone()
   }
 
@@ -164,30 +165,62 @@ impl<'a> GPUDeviceConn<'a> {
   }
 }
 
+pub trait GPUDeviceAllocator {
+  unsafe fn alloc<T>(&self, len: usize, conn: GPUDeviceConn) -> Arc<GPUDeviceMem<T>> where T: Copy + 'static;
+}
+
+pub struct GPUDeviceRawAlloc {
+}
+
+impl GPUDeviceAllocator for GPUDeviceRawAlloc {
+  unsafe fn alloc<T>(&self, len: usize, conn: GPUDeviceConn) -> Arc<GPUDeviceMem<T>> where T: Copy + 'static {
+    Arc::new(GPUDeviceRawMem::<T>::alloc(len, conn))
+  }
+}
+
+/*pub struct GPUDeviceStreamAlloc {
+}
+
+impl GPUDeviceAllocator for GPUDeviceStreamAlloc {
+  unsafe fn alloc<T>(&self, len: usize, conn: GPUDeviceConn) -> Arc<GPUDeviceMem<T>> where T: Copy + 'static {
+    Arc::new(GPUDeviceStreamMem::<T>::alloc(len, conn))
+  }
+}
+
+pub struct GPUDeviceCachingStreamAlloc {
+}
+
+impl GPUDeviceAllocator for GPUDeviceCachingStreamAlloc {
+  unsafe fn alloc<T>(&self, len: usize, conn: GPUDeviceConn) -> Arc<GPUDeviceMem<T>> where T: Copy + 'static {
+    // TODO
+    Arc::new(GPUDeviceStreamMem::<T>::alloc(len, conn))
+  }
+}*/
+
 pub trait GPUDeviceMem<T> where T: Copy {
   fn as_dptr(&self) -> *const T;
   fn as_mut_dptr(&self) -> *mut T;
   fn len(&self) -> usize;
 }
 
-pub struct GPUDeviceAllocMem<T> {
+pub struct GPUDeviceRawMem<T> {
   dev:  GPUDeviceId,
   dptr: *mut T,
   len:  usize,
   psz:  usize,
 }
 
-impl<T> GPUDeviceAllocMem<T> where T: Copy {
-  pub unsafe fn alloc(len: usize, conn: GPUDeviceConn) -> GPUDeviceAllocMem<T> where T: Copy {
-    println!("DEBUG: GPUDeviceAllocMem: alloc len: {}", len);
+impl<T> GPUDeviceRawMem<T> where T: Copy {
+  pub unsafe fn alloc(len: usize, conn: GPUDeviceConn) -> GPUDeviceRawMem<T> where T: Copy {
+    println!("DEBUG: GPUDeviceRawMem: alloc len: {}", len);
     assert!(len <= <u32>::max_value() as usize,
         "device memory size should not exceed 2**31-1 elements");
     let dptr = match cuda_alloc_device::<T>(len) {
-      Err(e) => panic!("GPUDeviceAllocMem allocation failed: {:?}", e),
+      Err(e) => panic!("GPUDeviceRawMem allocation failed: {:?}", e),
       Ok(dptr) => dptr,
     };
     assert!(!dptr.is_null());
-    GPUDeviceAllocMem{
+    GPUDeviceRawMem{
       dev:  conn.device(),
       dptr: dptr,
       len:  len,
@@ -196,7 +229,7 @@ impl<T> GPUDeviceAllocMem<T> where T: Copy {
   }
 }
 
-impl<T> GPUDeviceMem<T> for GPUDeviceAllocMem<T> where T: Copy {
+impl<T> GPUDeviceMem<T> for GPUDeviceRawMem<T> where T: Copy {
   fn as_dptr(&self) -> *const T {
     self.dptr
   }
@@ -210,17 +243,58 @@ impl<T> GPUDeviceMem<T> for GPUDeviceAllocMem<T> where T: Copy {
   }
 }
 
+pub struct GPUDeviceStreamMem<T> {
+  dev:  GPUDeviceId,
+  stream:   Arc<GPUDeviceRawStream>,
+  dptr: *mut T,
+  len:  usize,
+  psz:  usize,
+}
+
+impl<T> Drop for GPUDeviceStreamMem<T> {
+  fn drop(&mut self) {
+    // TODO
+    unimplemented!();
+  }
+}
+
+/*impl<T> GPUDeviceStreamMem<T> where T: Copy {
+  pub unsafe fn alloc(len: usize, conn: GPUDeviceConn) -> GPUDeviceStreamMem<T> where T: Copy {
+    println!("DEBUG: GPUDeviceStreamMem: alloc len: {}", len);
+    assert!(len <= <u32>::max_value() as usize,
+        "device memory size should not exceed 2**31-1 elements");
+    let dev = conn.device();
+    let (dptr, psz) = match cuda_alloc_managed::<T>(len) {
+      Err(e) => panic!("GPUDeviceStreamMem allocation failed: {:?}", e),
+      Ok((dptr, psz)) => (dptr, psz),
+    };
+    assert!(!dptr.is_null());
+    // TODO: set hints.
+    assert!(cuda_mem_advise_set_preferred_location(dptr, psz, dev.0).is_ok());
+    // TODO: attach mem to stream.
+    let stream = conn.stream();
+    assert!(stream.attach_single_mem_async(dptr, psz).is_ok());
+    GPUDeviceStreamMem{
+      dev:  dev,
+      stream:   stream,
+      dptr: dptr,
+      len:  len,
+      psz:  psz,
+    }
+  }
+}*/
+
 pub struct GPUDeviceToken {
-  //producers:    Arc<AtomicArcList<GPUDeviceStream>>,
-  producers:    Arc<RwLock<Vec<Arc<GPUDeviceStream>>>>,
+  //producers:    Arc<AtomicArcList<GPUDeviceRawStream>>,
+  producers:    Arc<RwLock<Vec<Arc<GPUDeviceRawStream>>>>,
 }
 
 impl GPUDeviceToken {
-  pub fn post_excl(&self, stream: Arc<GPUDeviceStream>) {
+  pub fn post_excl(&self, stream: Arc<GPUDeviceRawStream>) {
     self.producers.write().unwrap().push(stream);
   }
 
-  pub fn wait_excl(&self, stream: Arc<GPUDeviceStream>) {
+  pub fn wait_excl(&self, stream: Arc<GPUDeviceRawStream>) {
     let mut producers_lock = self.producers.write().unwrap();
     let producers: Vec<_> = producers_lock.drain(..).collect();
     for producer in producers.iter() {
@@ -235,13 +309,13 @@ impl GPUDeviceToken {
 }
 
 pub struct GPUDevicePost {
-  stream:   Arc<GPUDeviceStream>,
+  stream:   Arc<GPUDeviceRawStream>,
   xtokens:  Vec<GPUDeviceToken>,
   stokens:  Vec<GPUDeviceToken>,
 }
 
 pub struct GPUDeviceWait {
-  stream:   Arc<GPUDeviceStream>,
+  stream:   Arc<GPUDeviceRawStream>,
   xtokens:  Vec<GPUDeviceToken>,
   stokens:  Vec<GPUDeviceToken>,
 }
