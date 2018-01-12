@@ -20,6 +20,8 @@ use arrayidx::*;
 
 use std::sync::{Arc};
 
+pub mod linalg;
+
 #[derive(Clone)]
 pub struct GPUDeviceArray<Idx, T> where T: Copy {
   size:     Idx,
