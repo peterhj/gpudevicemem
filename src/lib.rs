@@ -19,16 +19,16 @@ extern crate cuda;
 extern crate cuda_blas;
 extern crate cuda_dnn;
 
-use cuda::bind_ffi::runtime::{cudaError_t, cudaStream_t, cudaDeviceProp};
-use cuda::runtime_new::*;
-use cuda_blas::new::{CublasHandle};
-use cuda_dnn::v5::{CudnnHandle};
+use cuda::ffi::runtime::{cudaError_t, cudaStream_t, cudaDeviceProp};
+use cuda::runtime::*;
+use cuda_blas::{CublasHandle};
+use cuda_dnn::{CudnnHandle};
 
 //use libc::{c_void};
 use std::mem::{size_of, transmute};
 use std::os::raw::{c_void};
 use std::rc::{Rc};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub mod array;
@@ -91,9 +91,10 @@ pub struct GPUDeviceStreamPool {
   arch_sum: GPUDeviceArchSummary,
   stream:   Arc<GPUDeviceRawStream>,
   cublas_h: Arc<CublasHandle>,
-  //cudnn_h:  Arc<CudnnHandle>,
+  //cublas_h: Arc<Mutex<Option<CublasHandle>>>,
+  cudnn_h:  Arc<Mutex<Option<CudnnHandle>>>,
   //workspace_sz: Arc<AtomicUsize>,
-  //workspace:    Option<Arc<GPUDeviceRawMem<u8>>>,
+  //workspace:    Arc<Mutex<Option<GPUDeviceRawMem<u8>>>>,
 }
 
 impl GPUDeviceStreamPool {
@@ -116,9 +117,10 @@ impl GPUDeviceStreamPool {
       arch_sum: arch_sum,
       stream:   stream,
       cublas_h: cublas_h,
-      //cudnn_h:  None,
+      //cublas_h: Arc::new(Mutex::new(None)),
+      cudnn_h:  Arc::new(Mutex::new(None)),
       //workspace_sz: Arc::new(AtomicUsize::new(0)),
-      //workspace:    None,
+      //workspace:    Arc::new(Mutex::new(None)),
     }
   }
 
@@ -130,6 +132,7 @@ impl GPUDeviceStreamPool {
       pop_dev:  GPUDeviceId(prev_dev),
       stream:   self.stream.clone(),
       cublas_h: self.cublas_h.clone(),
+      cudnn_h:  self.cudnn_h.clone(),
       borrow:   &(),
     }
   }
@@ -141,7 +144,8 @@ pub struct GPUDeviceConn<'a> {
   pop_dev:  GPUDeviceId,
   stream:   Arc<GPUDeviceRawStream>,
   cublas_h: Arc<CublasHandle>,
-  //cudnn_h:  Arc<CudnnHandle>,
+  //cublas_h: Arc<Mutex<Option<CublasHandle>>>,
+  cudnn_h:  Arc<Mutex<Option<CudnnHandle>>>,
   borrow:   &'a (),
 }
 
@@ -213,7 +217,7 @@ pub struct GPUDeviceRawMem<T> {
 impl<T> GPUDeviceRawMem<T> where T: Copy {
   pub unsafe fn alloc(len: usize, conn: GPUDeviceConn) -> GPUDeviceRawMem<T> where T: Copy {
     println!("DEBUG: GPUDeviceRawMem: alloc len: {}", len);
-    assert!(len <= <u32>::max_value() as usize,
+    assert!(len <= <i32>::max_value() as usize,
         "device memory size should not exceed 2**31-1 elements");
     let dptr = match cuda_alloc_device::<T>(len) {
       Err(e) => panic!("GPUDeviceRawMem allocation failed: {:?}", e),
@@ -238,8 +242,27 @@ impl<T> GPUDeviceMem<T> for GPUDeviceRawMem<T> where T: Copy {
     self.dptr
   }
 
-  fn len(&self) -> usize{
+  fn len(&self) -> usize {
     self.len
+  }
+}
+
+pub struct GPUDeviceResizableMem<T> {
+  dev:  GPUDeviceId,
+  dptr: *mut T,
+  len:  usize,
+  psz:  usize,
+}
+
+impl<T> GPUDeviceResizableMem<T> where T: Copy {
+  pub fn new(conn: GPUDeviceConn) -> GPUDeviceResizableMem<T> where T: Copy {
+    // TODO
+    unimplemented!();
+  }
+
+  pub fn reserve(&self, len: usize) {
+    // TODO
+    unimplemented!();
   }
 }
 
