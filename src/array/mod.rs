@@ -17,24 +17,18 @@ limitations under the License.
 use super::{GPUDeviceConn, GPUDeviceMem, GPUDeviceRawMem, GPUDeviceStreamMem};
 
 use arrayidx::*;
+use cuda::runtime::*;
+use memarray::{Array, ZeroBits, MemArray};
 
 use std::sync::{Arc};
 
 pub mod linalg;
 
-#[derive(Clone)]
-pub struct GPUDeviceArray<Idx, T> where T: Copy {
-  size:     Idx,
-  offset:   Idx,
-  stride:   Idx,
-  mem:      Arc<GPUDeviceMem<T>>,
-}
-
-pub trait Array {
+/*pub trait Array {
   type Idx;
 
   fn size(&self) -> Self::Idx;
-}
+}*/
 
 //pub struct BatchWrap<T>(pub T);
 
@@ -81,6 +75,14 @@ pub trait View<Idx> {
   fn view(self, idx: Idx) -> Self where Self: Sized;
 }
 
+#[derive(Clone)]
+pub struct GPUDeviceArray<Idx, T> where T: Copy {
+  size:     Idx,
+  offset:   Idx,
+  stride:   Idx,
+  mem:      Arc<GPUDeviceMem<T>>,
+}
+
 pub type GPUDeviceScalar<T>  = GPUDeviceArray<Index0d, T>;
 pub type GPUDeviceArray1d<T> = GPUDeviceArray<Index1d, T>;
 pub type GPUDeviceArray2d<T> = GPUDeviceArray<Index2d, T>;
@@ -88,36 +90,39 @@ pub type GPUDeviceArray3d<T> = GPUDeviceArray<Index3d, T>;
 pub type GPUDeviceArray4d<T> = GPUDeviceArray<Index4d, T>;
 pub type GPUDeviceArray5d<T> = GPUDeviceArray<Index5d, T>;
 
-impl<Idx, T> GPUDeviceArrayZeros for GPUDeviceArray<Idx, T> where Idx: ArrayIndex + Copy, T: Copy + 'static {
+impl<Idx, T> GPUDeviceArrayZeros for GPUDeviceArray<Idx, T> where Idx: ArrayIndex, T: Copy + 'static {
   fn zeros(size: Idx, conn: GPUDeviceConn) -> Self {
     GPUDeviceArray{
-      size:     size,
+      size:     size.clone(),
       offset:   Idx::zero(),
       stride:   size.to_packed_stride(),
       mem:      Arc::new(unsafe { GPUDeviceRawMem::<T>::alloc(size.flat_len(), conn) }),
-      //mem:      Arc::new(unsafe { GPUDeviceStreamMem::<T>::alloc(size.flat_len(), conn) }),
     }
   }
 }
 
-impl<Idx, T> Array for GPUDeviceArray<Idx, T> where Idx: Copy, T: Copy {
+impl<Idx, T> Array for GPUDeviceArray<Idx, T> where Idx: Clone, T: Copy {
   type Idx = Idx;
 
   fn size(&self) -> Idx {
-    self.size
+    self.size.clone()
   }
 }
 
-impl<Idx, T> AsView for GPUDeviceArray<Idx, T> where Idx: Copy, T: Copy {
+impl<Idx, T> AsView for GPUDeviceArray<Idx, T> where Idx: Clone, T: Copy {
   type ViewTy = GPUDeviceArrayView<Idx, T>;
 
   fn as_view(&self) -> GPUDeviceArrayView<Idx, T> {
-    // TODO
-    unimplemented!();
+    GPUDeviceArrayView{
+      size:     self.size.clone(),
+      offset:   self.offset.clone(),
+      stride:   self.stride.clone(),
+      mem:      self.mem.clone(),
+    }
   }
 }
 
-impl<Idx, T> FlatView for GPUDeviceArray<Idx, T> where Idx: ArrayIndex + Copy, T: Copy {
+impl<Idx, T> FlatView for GPUDeviceArray<Idx, T> where Idx: ArrayIndex, T: Copy {
   type FlatViewTy = GPUDeviceArrayView1d<T>;
 
   fn flat_view(&self) -> Option<GPUDeviceArrayView1d<T>> {
@@ -132,6 +137,69 @@ impl<Idx, T> FlatView for GPUDeviceArray<Idx, T> where Idx: ArrayIndex + Copy, T
         mem:    self.mem.clone(),
       })
     }
+  }
+}
+
+impl<Idx, T> GPUDeviceArray<Idx, T> where Idx: ArrayIndex, T: Copy {
+  pub fn copy(&self, src: &GPUDeviceArray<Idx, T>, conn: GPUDeviceConn) {
+    assert_eq!(self.size, src.size());
+    if self.size.is_packed(&self.stride) {
+      let len = self.size.flat_len();
+      match unsafe { cuda_memcpy_async(
+          self.mem.as_mut_dptr(),
+          src.mem.as_dptr(),
+          len,
+          CudaMemcpyKind::DeviceToDevice,
+          &conn.stream().cuda_stream(),
+      ) } {
+        Err(_) => panic!(),
+        Ok(_) => {}
+      }
+    } else {
+      unimplemented!();
+    }
+  }
+
+  pub fn copy_mem(&self, src: &MemArray<Idx, T>, conn: GPUDeviceConn) {
+    assert_eq!(self.size, src.size());
+    conn.sync();
+    if self.size.is_packed(&self.stride) {
+      let len = self.size.flat_len();
+      match unsafe { cuda_memcpy_async(
+          self.mem.as_mut_dptr(),
+          src.as_ptr(),
+          len,
+          CudaMemcpyKind::HostToDevice,
+          &conn.stream().cuda_stream(),
+      ) } {
+        Err(_) => panic!(),
+        Ok(_) => {}
+      }
+    } else {
+      unimplemented!();
+    }
+    conn.sync();
+  }
+
+  pub fn dump_mem(&self, dst: &mut MemArray<Idx, T>, conn: GPUDeviceConn) {
+    assert_eq!(self.size, dst.size());
+    conn.sync();
+    if self.size.is_packed(&self.stride) {
+      let len = self.size.flat_len();
+      match unsafe { cuda_memcpy_async(
+          dst.as_mut_ptr(),
+          self.mem.as_dptr(),
+          len,
+          CudaMemcpyKind::DeviceToHost,
+          &conn.stream().cuda_stream(),
+      ) } {
+        Err(_) => panic!(),
+        Ok(_) => {}
+      }
+    } else {
+      unimplemented!();
+    }
+    conn.sync();
   }
 }
 
@@ -150,15 +218,15 @@ pub type GPUDeviceInnerBatchArray2d<T> = GPUDeviceInnerBatchArray<Index2d, T>;
 pub type GPUDeviceInnerBatchArray3d<T> = GPUDeviceInnerBatchArray<Index3d, T>;
 pub type GPUDeviceInnerBatchArray4d<T> = GPUDeviceInnerBatchArray<Index4d, T>;
 
-impl<Idx, T> Array for GPUDeviceInnerBatchArray<Idx, T> where Idx: Copy, T: Copy {
+impl<Idx, T> Array for GPUDeviceInnerBatchArray<Idx, T> where Idx: Clone, T: Copy {
   type Idx = Idx;
 
   fn size(&self) -> Idx {
-    self.size
+    self.size.clone()
   }
 }
 
-impl<Idx, T> BatchArray for GPUDeviceInnerBatchArray<Idx, T> where Idx: Copy, T: Copy {
+impl<Idx, T> BatchArray for GPUDeviceInnerBatchArray<Idx, T> where Idx: Clone, T: Copy {
   fn batch_size(&self) -> usize {
     self.batch_sz
   }
@@ -168,7 +236,7 @@ impl<Idx, T> BatchArray for GPUDeviceInnerBatchArray<Idx, T> where Idx: Copy, T:
   }
 }
 
-impl<Idx, T> AsView for GPUDeviceInnerBatchArray<Idx, T> where Idx: ArrayIndex + Copy, T: Copy {
+impl<Idx, T> AsView for GPUDeviceInnerBatchArray<Idx, T> where Idx: ArrayIndex, T: Copy {
   type ViewTy = GPUDeviceArrayView<Idx::Above, T>;
 
   fn as_view(&self) -> GPUDeviceArrayView<Idx::Above, T> {
@@ -193,22 +261,22 @@ pub type GPUDeviceOuterBatchArray2d<T> = GPUDeviceOuterBatchArray<Index2d, T>;
 pub type GPUDeviceOuterBatchArray3d<T> = GPUDeviceOuterBatchArray<Index3d, T>;
 pub type GPUDeviceOuterBatchArray4d<T> = GPUDeviceOuterBatchArray<Index4d, T>;
 
-impl<Idx, T> GPUDeviceBatchArrayZeros for GPUDeviceOuterBatchArray<Idx, T> where Idx: Copy, T: Copy {
+impl<Idx, T> GPUDeviceBatchArrayZeros for GPUDeviceOuterBatchArray<Idx, T> where Idx: ArrayIndex, T: Copy {
   fn zeros(size: Idx, batch_sz: usize, conn: GPUDeviceConn) -> Self {
     // TODO
     unimplemented!();
   }
 }
 
-impl<Idx, T> Array for GPUDeviceOuterBatchArray<Idx, T> where Idx: Copy, T: Copy {
+impl<Idx, T> Array for GPUDeviceOuterBatchArray<Idx, T> where Idx: Clone, T: Copy {
   type Idx = Idx;
 
   fn size(&self) -> Idx {
-    self.size
+    self.size.clone()
   }
 }
 
-impl<Idx, T> BatchArray for GPUDeviceOuterBatchArray<Idx, T> where Idx: Copy, T: Copy {
+impl<Idx, T> BatchArray for GPUDeviceOuterBatchArray<Idx, T> where Idx: Clone, T: Copy {
   fn batch_size(&self) -> usize {
     self.batch_sz
   }
@@ -218,7 +286,7 @@ impl<Idx, T> BatchArray for GPUDeviceOuterBatchArray<Idx, T> where Idx: Copy, T:
   }
 }
 
-impl<Idx, T> AsView for GPUDeviceOuterBatchArray<Idx, T> where Idx: ArrayIndex + Copy, T: Copy {
+impl<Idx, T> AsView for GPUDeviceOuterBatchArray<Idx, T> where Idx: ArrayIndex, T: Copy {
   type ViewTy = GPUDeviceArrayView<Idx::Above, T>;
 
   fn as_view(&self) -> GPUDeviceArrayView<Idx::Above, T> {
@@ -234,7 +302,7 @@ impl<Idx, T> AsView for GPUDeviceOuterBatchArray<Idx, T> where Idx: ArrayIndex +
   }
 }
 
-impl<Idx, T> FlatView for GPUDeviceOuterBatchArray<Idx, T> where Idx: ArrayIndex + Copy, T: Copy {
+impl<Idx, T> FlatView for GPUDeviceOuterBatchArray<Idx, T> where Idx: ArrayIndex, T: Copy {
   type FlatViewTy = GPUDeviceArrayView1d<T>;
 
   fn flat_view(&self) -> Option<GPUDeviceArrayView1d<T>> {
@@ -279,7 +347,7 @@ pub type GPUDeviceArrayViewMut2d<T> = GPUDeviceArrayViewMut<Index2d, T>;
 pub type GPUDeviceArrayViewMut3d<T> = GPUDeviceArrayViewMut<Index3d, T>;
 pub type GPUDeviceArrayViewMut4d<T> = GPUDeviceArrayViewMut<Index4d, T>;*/
 
-impl<Idx, T> GPUDeviceArrayView<Idx, T> where Idx: ArrayIndex + Copy, T: Copy {
+impl<Idx, T> GPUDeviceArrayView<Idx, T> where Idx: ArrayIndex, T: Copy {
   pub unsafe fn as_dptr(&self) -> *const T {
     self.mem.as_dptr().offset(self.offset.flat_index(&self.stride) as _)
   }
@@ -289,19 +357,47 @@ impl<Idx, T> GPUDeviceArrayView<Idx, T> where Idx: ArrayIndex + Copy, T: Copy {
   }
 
   pub fn stride(&self) -> Idx {
-    self.stride
+    self.stride.clone()
   }
 }
 
-impl<Idx, T> Array for GPUDeviceArrayView<Idx, T> where Idx: ArrayIndex + Copy, T: Copy {
+impl<Idx, T> Array for GPUDeviceArrayView<Idx, T> where Idx: ArrayIndex, T: Copy {
   type Idx = Idx;
 
   fn size(&self) -> Idx {
-    self.size
+    self.size.clone()
   }
 }
 
-impl<Idx, T> GPUDeviceArrayView<Idx, T> where Idx: ArrayIndex + Copy, T: Copy {
+impl<Idx, T> GPUDeviceArrayView<Idx, T> where Idx: ArrayIndex, T: ZeroBits + Copy {
+  pub fn set_zeros(&self, conn: &GPUDeviceConn) {
+    //println!("DEBUG: GPUDeviceArrayView: set_zeros");
+    if self.size.is_packed(&self.stride) {
+      unsafe { cuda_memset_async(self.mem.as_mut_dptr() as *mut u8, 0, self.mem.size_bytes(), &conn.stream().cuda_stream()) };
+    } else {
+      unimplemented!();
+    }
+  }
+}
+
+impl<Idx> GPUDeviceArrayView<Idx, f32> where Idx: ArrayIndex {
+  pub fn set_constant(&self, c: f32, conn: &GPUDeviceConn) {
+    if self.size.is_packed(&self.stride) {
+      let len = self.size.flat_len();
+      // TODO
+      unimplemented!();
+      /*unsafe { devicemem_gpu_set_constant_f32(
+          len as _,
+          c,
+          self.mem.as_mut_dptr(),
+      ) };*/
+    } else {
+      unimplemented!();
+    }
+  }
+}
+
+impl<Idx, T> GPUDeviceArrayView<Idx, T> where Idx: ArrayIndex, T: Copy {
   pub fn copy(&mut self, other: &GPUDeviceArrayView<Idx, T>, conn: &GPUDeviceConn) {
     // TODO
     unimplemented!();
@@ -313,7 +409,7 @@ impl<Idx, T> GPUDeviceArrayView<Idx, T> where Idx: ArrayIndex + Copy, T: Copy {
   }
 }
 
-impl<Idx, Range, T> View<Range> for GPUDeviceArrayView<Idx, T> where Idx: ArrayIndex + Copy, Range: ArrayRange<Idx> + Copy, T: Copy {
+/*impl<Idx, Range, T> View<Range> for GPUDeviceArrayView<Idx, T> where Idx: ArrayIndex, Range: ArrayRange<Idx> + Copy, T: Copy {
   fn view(self, range: Range) -> Self {
     // TODO: bounds check.
     let view_size = range.end(&self.size).sub(&range.start(&Idx::zero()));
@@ -326,4 +422,4 @@ impl<Idx, Range, T> View<Range> for GPUDeviceArrayView<Idx, T> where Idx: ArrayI
       mem:      self.mem.clone(),
     }
   }
-}
+}*/

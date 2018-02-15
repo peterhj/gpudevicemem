@@ -7,8 +7,14 @@ authors = ["Peter Jin <peterhaijin@gmail.com>"]
 name = "devicemem_gpu"
 path = "src/lib.rs"
 
+[build-dependencies]
+bindgen = "^0.32"
+cc = "*"
+walkdir = "*"
+
 [dependencies]
 arrayidx = { path = "../arrayidx" }
 cuda = { path = "../libcuda" }
 cuda_blas = { path = "../libcuda_blas" }
 cuda_dnn = { path = "../libcuda_dnn" }
+memarray = { path = "../memarray" }

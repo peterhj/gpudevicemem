@@ -18,13 +18,15 @@ extern crate arrayidx;
 extern crate cuda;
 extern crate cuda_blas;
 extern crate cuda_dnn;
+extern crate memarray;
 
 use cuda::ffi::runtime::{cudaError_t, cudaStream_t, cudaDeviceProp};
 use cuda::runtime::*;
 use cuda_blas::{CublasHandle};
 use cuda_dnn::{CudnnHandle};
 
-//use libc::{c_void};
+use std::collections::{HashMap};
+use std::marker::{PhantomData};
 use std::mem::{size_of, transmute};
 use std::os::raw::{c_void};
 use std::rc::{Rc};
@@ -32,6 +34,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub mod array;
+pub mod ffi;
 
 //static STREAM_POOL_UID_COUNTER: AtomicU64 = ATOMIC_U64_INIT;
 
@@ -51,7 +54,7 @@ impl GPUDeviceId {
 
 pub struct GPUDeviceRawStream {
   dev_id:       GPUDeviceId,
-  raw_stream:   Arc<CudaStream>,
+  cuda_stream:  Arc<CudaStream>,
   sync_event:   Arc<CudaEvent>,
 }
 
@@ -59,14 +62,18 @@ impl GPUDeviceRawStream {
   pub fn new(dev_id: GPUDeviceId) -> Self {
     let prev_dev = CudaDevice::get_current().unwrap();
     CudaDevice::set_current(dev_id.0).unwrap();
-    let raw_stream = Arc::new(CudaStream::create().unwrap());
+    let cuda_stream = Arc::new(CudaStream::create().unwrap());
     let sync_event = Arc::new(CudaEvent::create_fastest().unwrap());
     CudaDevice::set_current(prev_dev).unwrap();
     GPUDeviceRawStream{
       dev_id:       dev_id,
-      raw_stream:   raw_stream,
+      cuda_stream:  cuda_stream,
       sync_event:   sync_event,
     }
+  }
+
+  pub fn cuda_stream(&self) -> Arc<CudaStream> {
+    self.cuda_stream.clone()
   }
 
   pub fn sync_event(&self) -> Arc<CudaEvent> {
@@ -74,7 +81,7 @@ impl GPUDeviceRawStream {
   }
 
   pub fn wait_on_event(&self, event: &CudaEvent) {
-    self.raw_stream.wait_event(event).unwrap();
+    self.cuda_stream.wait_event(event).unwrap();
   }
 }
 
@@ -90,9 +97,9 @@ pub struct GPUDeviceStreamPool {
   dev_id:   GPUDeviceId,
   arch_sum: GPUDeviceArchSummary,
   stream:   Arc<GPUDeviceRawStream>,
-  cublas_h: Arc<CublasHandle>,
-  //cublas_h: Arc<Mutex<Option<CublasHandle>>>,
-  cudnn_h:  Arc<Mutex<Option<CudnnHandle>>>,
+  //arena:    GPUDeviceArena,
+  cublas_h: Arc<Mutex<Option<Arc<CublasHandle>>>>,
+  cudnn_h:  Arc<Mutex<Option<Arc<CudnnHandle>>>>,
   //workspace_sz: Arc<AtomicUsize>,
   //workspace:    Arc<Mutex<Option<GPUDeviceRawMem<u8>>>>,
 }
@@ -111,13 +118,13 @@ impl GPUDeviceStreamPool {
     };
     println!("DEBUG: GPUDeviceStreamPool: dev: {} arch: {:?}", dev, arch_sum);
     let stream = Arc::new(GPUDeviceRawStream::new(dev_id));
-    let cublas_h = Arc::new(CublasHandle::create().unwrap());
+    //let cublas_h = Arc::new(CublasHandle::create().unwrap());
     GPUDeviceStreamPool{
       dev_id:   dev_id,
       arch_sum: arch_sum,
       stream:   stream,
-      cublas_h: cublas_h,
-      //cublas_h: Arc::new(Mutex::new(None)),
+      //cublas_h: cublas_h,
+      cublas_h: Arc::new(Mutex::new(None)),
       cudnn_h:  Arc::new(Mutex::new(None)),
       //workspace_sz: Arc::new(AtomicUsize::new(0)),
       //workspace:    Arc::new(Mutex::new(None)),
@@ -143,9 +150,9 @@ pub struct GPUDeviceConn<'a> {
   dev:      GPUDeviceId,
   pop_dev:  GPUDeviceId,
   stream:   Arc<GPUDeviceRawStream>,
-  cublas_h: Arc<CublasHandle>,
-  //cublas_h: Arc<Mutex<Option<CublasHandle>>>,
-  cudnn_h:  Arc<Mutex<Option<CudnnHandle>>>,
+  //cublas_h: Arc<CublasHandle>,
+  cublas_h: Arc<Mutex<Option<Arc<CublasHandle>>>>,
+  cudnn_h:  Arc<Mutex<Option<Arc<CudnnHandle>>>>,
   borrow:   &'a (),
 }
 
@@ -165,11 +172,107 @@ impl<'a> GPUDeviceConn<'a> {
   }
 
   pub fn cublas(&self) -> Arc<CublasHandle> {
-    self.cublas_h.clone()
+    let mut maybe_cublas = self.cublas_h.lock().unwrap();
+    if maybe_cublas.is_none() {
+      *maybe_cublas = Some(Arc::new(CublasHandle::create().unwrap()));
+    }
+    maybe_cublas.as_ref().unwrap().clone()
+  }
+
+  pub fn sync(&self) {
+    self.stream.cuda_stream().synchronize();
   }
 }
 
-pub trait GPUDeviceAllocator {
+pub struct GPUDeviceArenaChunkMem<T> where T: Copy {
+  raw:  Arc<GPUDeviceArenaChunkRawMem>,
+  _m:   PhantomData<T>,
+}
+
+pub struct GPUDeviceArenaChunkRawMem {
+  dev:  GPUDeviceId,
+  dptr: *mut u8,
+  phsz: usize,
+  rdup: usize,
+}
+
+pub struct GPUDeviceArena {
+  inner:    Arc<Mutex<GPUDeviceArenaInner>>,
+}
+
+impl GPUDeviceArena {
+  pub fn new(dev: GPUDeviceId) -> Self {
+    // TODO
+    unimplemented!();
+  }
+}
+
+pub struct GPUDeviceArenaInner {
+  dev:      GPUDeviceId,
+  chunks:   HashMap<usize, Vec<Arc<GPUDeviceArenaChunkRawMem>>>,
+  //free:     HashMap<usize, Vec<Arc<GPUDeviceArenaChunkRawMem>>>,
+}
+
+impl GPUDeviceArenaInner {
+  pub unsafe fn alloc(&mut self, phsz: usize, conn: GPUDeviceConn) -> Arc<GPUDeviceArenaChunkRawMem> {
+    // TODO: round up the alloc size to a nice round number.
+    let rdup_phsz = if phsz <= 512 {
+      (phsz + 512 - 1) / 512 * 512
+    } else if phsz <= 32768 {
+      (phsz + 32768 - 1) / 32768 * 32768
+    } else {
+      (phsz + 1048576 - 1) / 1048576 * 1048576
+    };
+
+    if self.chunks.get(&rdup_phsz).is_none() {
+      self.chunks.insert(rdup_phsz, vec![]);
+    }
+
+    if !self.chunks.get(&rdup_phsz).unwrap().is_empty() {
+      let chunks = self.chunks.get(&rdup_phsz).unwrap();
+      for chunk in chunks.iter() {
+        if Arc::strong_count(chunk) == 1 {
+          return chunk.clone()
+        }
+      }
+    }
+
+    let dptr = match cuda_alloc_device::<u8>(rdup_phsz) {
+      Err(_) => {
+        self.collect_garbage();
+        match cuda_alloc_device::<u8>(phsz) {
+          Err(_) => panic!("GPUDeviceArena allocation failed"),
+          Ok(dptr) => dptr,
+        }
+      }
+      Ok(dptr) => dptr,
+    };
+    let chunk = Arc::new(GPUDeviceArenaChunkRawMem{
+      dev:  self.dev,
+      dptr: dptr,
+      phsz: phsz,
+      rdup: rdup_phsz,
+    });
+    self.chunks.get_mut(&rdup_phsz).unwrap().push(chunk.clone());
+    chunk
+  }
+
+  pub fn collect_garbage(&mut self) {
+    for (_, mut chunks) in self.chunks.iter_mut() {
+      let mut free_idxs = vec![];
+      for (idx, chunk) in chunks.iter().enumerate() {
+        if Arc::strong_count(chunk) == 1 {
+          free_idxs.push(idx);
+        }
+      }
+      for &idx in free_idxs.iter().rev() {
+        chunks.remove(idx);
+      }
+    }
+  }
+}
+
+/*pub trait GPUDeviceAllocator {
   unsafe fn alloc<T>(&self, len: usize, conn: GPUDeviceConn) -> Arc<GPUDeviceMem<T>> where T: Copy + 'static;
 }
 
@@ -180,7 +283,7 @@ impl GPUDeviceAllocator for GPUDeviceRawAlloc {
   unsafe fn alloc<T>(&self, len: usize, conn: GPUDeviceConn) -> Arc<GPUDeviceMem<T>> where T: Copy + 'static {
     Arc::new(GPUDeviceRawMem::<T>::alloc(len, conn))
   }
-}
+}*/
 
 /*pub struct GPUDeviceStreamAlloc {
 }
@@ -205,13 +308,14 @@ pub trait GPUDeviceMem<T> where T: Copy {
   fn as_dptr(&self) -> *const T;
   fn as_mut_dptr(&self) -> *mut T;
   fn len(&self) -> usize;
+  fn size_bytes(&self) -> usize;
 }
 
 pub struct GPUDeviceRawMem<T> {
   dev:  GPUDeviceId,
   dptr: *mut T,
   len:  usize,
-  psz:  usize,
+  phsz: usize,
 }
 
 impl<T> GPUDeviceRawMem<T> where T: Copy {
@@ -228,7 +332,7 @@ impl<T> GPUDeviceRawMem<T> where T: Copy {
       dev:  conn.device(),
       dptr: dptr,
       len:  len,
-      psz:  len * size_of::<T>(),
+      phsz: len * size_of::<T>(),
     }
   }
 }
@@ -244,6 +348,10 @@ impl<T> GPUDeviceMem<T> for GPUDeviceRawMem<T> where T: Copy {
 
   fn len(&self) -> usize {
     self.len
+  }
+
+  fn size_bytes(&self) -> usize {
+    self.phsz
   }
 }
 
