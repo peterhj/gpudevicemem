@@ -373,7 +373,8 @@ impl<Idx, T> GPUDeviceArrayView<Idx, T> where Idx: ArrayIndex, T: ZeroBits + Cop
   pub fn set_zeros(&self, conn: &GPUDeviceConn) {
     //println!("DEBUG: GPUDeviceArrayView: set_zeros");
     if self.size.is_packed(&self.stride) {
-      unsafe { cuda_memset_async(self.mem.as_mut_dptr() as *mut u8, 0, self.mem.size_bytes(), &conn.stream().cuda_stream()) };
+      let res = unsafe { cuda_memset_async(self.mem.as_mut_dptr() as *mut u8, 0, self.mem.size_bytes(), &conn.stream().cuda_stream()) };
+      assert!(res.is_ok());
     } else {
       unimplemented!();
     }

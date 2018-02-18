@@ -44,9 +44,9 @@ __global__ void devicemem_gpu_map_reduce_Iab_Ob_packed_deterministic_kernel(
     T *y)
 {
   extern __shared__ T cache[];
+  uint32_t rdup_reduce_dim = (reduce_dim + blockDim.x - 1) / blockDim.x * blockDim.x;
   for (uint32_t blk = gblock(); blk < outer_dim; blk += gblockcount()) {
     T accumulator = Reduce::InitVal();
-    uint32_t rdup_reduce_dim = (reduce_dim + blockDim.x - 1) / blockDim.x * blockDim.x;
     for (uint32_t i = threadIdx.x; i < rdup_reduce_dim; i += blockDim.x) {
       if (i < reduce_dim) {
         cache[threadIdx.x] = Map::Map(x[Index2::Pack(i, reduce_dim, blk)]);
@@ -86,10 +86,10 @@ __global__ void devicemem_gpu_map_reduce_Iabc_Ob_packed_deterministic_kernel(
     T *y)
 {
   extern __shared__ T cache[];
+  uint32_t rdup_reduce_inner_dim = (reduce_inner_dim + blockDim.x - 1) / blockDim.x * blockDim.x;
   for (uint32_t blk = gblock(); blk < mid_dim; blk += gblockcount()) {
     T accumulator = Reduce::InitVal();
     for (uint32_t j = 0; j < reduce_outer_dim; ++j) {
-      uint32_t rdup_reduce_inner_dim = (reduce_inner_dim + blockDim.x - 1) / blockDim.x * blockDim.x;
       for (uint32_t i = threadIdx.x; i < rdup_reduce_inner_dim; i += blockDim.x) {
         if (i < reduce_inner_dim) {
           cache[threadIdx.x] = Map::Map(x[Index3::Pack(i, reduce_inner_dim, blk, mid_dim, j)]);
@@ -108,6 +108,38 @@ __global__ void devicemem_gpu_map_reduce_Iabc_Ob_packed_deterministic_kernel(
   }
 }
 
+template <typename T, typename Map, typename Reduce>
+__global__ void devicemem_gpu_map_reduce_Iabc_Ob_packed_deterministic_v2_kernel(
+    uint32_t reduce_inner_dim,
+    uint32_t mid_dim,
+    uint32_t reduce_outer_dim,
+    const T *x,
+    T *y)
+{
+  extern __shared__ T cache[];
+  uint32_t fused_inner_outer_dim = reduce_inner_dim * reduce_outer_dim;
+  uint32_t rdup_fused_inner_outer_dim = (fused_inner_outer_dim + blockDim.x - 1) / blockDim.x * blockDim.x;
+  for (uint32_t blk = gblock(); blk < mid_dim; blk += gblockcount()) {
+    T accumulator = Reduce::InitVal();
+    for (uint32_t i = threadIdx.x; i < rdup_fused_inner_outer_dim; i += blockDim.x) {
+      if (i < fused_inner_outer_dim) {
+        uint32_t i0, i1;
+        Index2::Unpack(i, &i0, reduce_inner_dim, &i1);
+        cache[threadIdx.x] = Map::Map(x[Index3::Pack(i0, reduce_inner_dim, blk, mid_dim, i1)]);
+      } else {
+        cache[threadIdx.x] = Reduce::InitVal();
+      }
+      __syncthreads();
+      threadblock_reduce_sync<T, Reduce>(cache);
+      if (0 == threadIdx.x) {
+        Reduce::Reduce(&accumulator, cache[0]);
+      }
+      __syncthreads();
+    }
+    y[blk] = accumulator;
+  }
+}
+
 extern "C" void devicemem_gpu_sum_Iabc_Ob_packed_deterministic_f32(
     uint32_t reduce_inner_dim,
     uint32_t mid_dim,
@@ -118,7 +150,7 @@ extern "C" void devicemem_gpu_sum_Iabc_Ob_packed_deterministic_f32(
     cudaStream_t stream)
 {
   assert(check_power_of_2(cfg->flat_block_dim().x));
-  devicemem_gpu_map_reduce_Iabc_Ob_packed_deterministic_kernel<float, CopyMap<float>, AddReduce<float>><<<cfg->flat_block_count(mid_dim), cfg->flat_block_dim(), cfg->flat_block_len() * sizeof(float), stream>>>(
+  devicemem_gpu_map_reduce_Iabc_Ob_packed_deterministic_v2_kernel<float, CopyMap<float>, AddReduce<float>><<<cfg->flat_block_count(mid_dim), cfg->flat_block_dim(), cfg->flat_block_len() * sizeof(float), stream>>>(
       reduce_inner_dim, mid_dim, reduce_outer_dim, x, y);
 }
 
@@ -132,6 +164,6 @@ extern "C" void devicemem_gpu_square_map_sum_Iabc_Ob_packed_deterministic_f32(
     cudaStream_t stream)
 {
   assert(check_power_of_2(cfg->flat_block_dim().x));
-  devicemem_gpu_map_reduce_Iabc_Ob_packed_deterministic_kernel<float, SquareMap<float>, AddReduce<float>><<<cfg->flat_block_count(mid_dim), cfg->flat_block_dim(), cfg->flat_block_len() * sizeof(float), stream>>>(
+  devicemem_gpu_map_reduce_Iabc_Ob_packed_deterministic_v2_kernel<float, SquareMap<float>, AddReduce<float>><<<cfg->flat_block_count(mid_dim), cfg->flat_block_dim(), cfg->flat_block_len() * sizeof(float), stream>>>(
       reduce_inner_dim, mid_dim, reduce_outer_dim, x, y);
 }

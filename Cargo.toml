@@ -17,4 +17,6 @@ arrayidx = { path = "../arrayidx" }
 cuda = { path = "../libcuda" }
 cuda_blas = { path = "../libcuda_blas" }
 cuda_dnn = { path = "../libcuda_dnn" }
+float = { path = "../libfloat" }
+lazy_static = "*"
 memarray = { path = "../memarray" }

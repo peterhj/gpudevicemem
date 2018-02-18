@@ -18,6 +18,8 @@ extern crate arrayidx;
 extern crate cuda;
 extern crate cuda_blas;
 extern crate cuda_dnn;
+extern crate float;
+#[macro_use] extern crate lazy_static;
 extern crate memarray;
 
 use cuda::ffi::runtime::{cudaError_t, cudaStream_t, cudaDeviceProp};
@@ -25,6 +27,7 @@ use cuda::runtime::*;
 use cuda_blas::{CublasHandle};
 use cuda_dnn::{CudnnHandle};
 
+use std::cmp::{max};
 use std::collections::{HashMap};
 use std::marker::{PhantomData};
 use std::mem::{size_of, transmute};
@@ -38,7 +41,7 @@ pub mod ffi;
 
 //static STREAM_POOL_UID_COUNTER: AtomicU64 = ATOMIC_U64_INIT;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct GPUDeviceId(pub i32);
 
 impl GPUDeviceId {
@@ -100,6 +103,7 @@ pub struct GPUDeviceStreamPool {
   //arena:    GPUDeviceArena,
   cublas_h: Arc<Mutex<Option<Arc<CublasHandle>>>>,
   cudnn_h:  Arc<Mutex<Option<Arc<CudnnHandle>>>>,
+  burst_arena:  GPUDeviceBurstArena,
   //workspace_sz: Arc<AtomicUsize>,
   //workspace:    Arc<Mutex<Option<GPUDeviceRawMem<u8>>>>,
 }
@@ -126,6 +130,8 @@ impl GPUDeviceStreamPool {
       //cublas_h: cublas_h,
       cublas_h: Arc::new(Mutex::new(None)),
       cudnn_h:  Arc::new(Mutex::new(None)),
+      // TODO: configurable arena limit.
+      burst_arena:  GPUDeviceBurstArena::with_limit(dev_id, 3_000_000_000),
       //workspace_sz: Arc::new(AtomicUsize::new(0)),
       //workspace:    Arc::new(Mutex::new(None)),
     }
@@ -140,6 +146,7 @@ impl GPUDeviceStreamPool {
       stream:   self.stream.clone(),
       cublas_h: self.cublas_h.clone(),
       cudnn_h:  self.cudnn_h.clone(),
+      burst_arena:  self.burst_arena.clone(),
       borrow:   &(),
     }
   }
@@ -153,6 +160,7 @@ pub struct GPUDeviceConn<'a> {
   //cublas_h: Arc<CublasHandle>,
   cublas_h: Arc<Mutex<Option<Arc<CublasHandle>>>>,
   cudnn_h:  Arc<Mutex<Option<Arc<CudnnHandle>>>>,
+  burst_arena:  GPUDeviceBurstArena,
   borrow:   &'a (),
 }
 
@@ -179,21 +187,228 @@ impl<'a> GPUDeviceConn<'a> {
     maybe_cublas.as_ref().unwrap().clone()
   }
 
+  pub fn cudnn(&self) -> Arc<CudnnHandle> {
+    let mut maybe_cudnn = self.cudnn_h.lock().unwrap();
+    if maybe_cudnn.is_none() {
+      *maybe_cudnn = Some(Arc::new(CudnnHandle::create().unwrap()));
+    }
+    maybe_cudnn.as_ref().unwrap().clone()
+  }
+
+  pub fn burst_reserve_bytes(&self, reserve: usize) {
+    self.burst_arena.reserve_bytes(reserve);
+  }
+
+  pub unsafe fn burst_alloc<T>(&self, len: usize) -> GPUDeviceRegionMem<T> where T: Copy {
+    self.burst_arena.alloc::<T>(len, self.clone())
+  }
+
   pub fn sync(&self) {
-    self.stream.cuda_stream().synchronize();
+    let res = self.stream.cuda_stream().synchronize();
+    assert!(res.is_ok());
   }
 }
 
-pub struct GPUDeviceArenaChunkMem<T> where T: Copy {
-  raw:  Arc<GPUDeviceArenaChunkRawMem>,
+pub struct GPUDeviceRegionMem<T> where T: Copy {
+  raw:  Arc<GPUDeviceMem<u8>>,
+  len:  usize,
   _m:   PhantomData<T>,
 }
 
-pub struct GPUDeviceArenaChunkRawMem {
+pub struct GPUDeviceRegionSliceMem {
+  dev:  GPUDeviceId,
+  dptr: *mut u8,
+  phsz: usize,
+  root: Arc<GPUDeviceRegionRawMem>,
+}
+
+impl GPUDeviceMem<u8> for GPUDeviceRegionSliceMem {
+  fn as_dptr(&self) -> *const u8 {
+    self.dptr
+  }
+
+  fn as_mut_dptr(&self) -> *mut u8 {
+    self.dptr
+  }
+
+  fn len(&self) -> usize {
+    self.phsz
+  }
+
+  fn size_bytes(&self) -> usize {
+    self.phsz
+  }
+}
+
+pub struct GPUDeviceRegionRawMem {
   dev:  GPUDeviceId,
   dptr: *mut u8,
   phsz: usize,
   rdup: usize,
+}
+
+impl Drop for GPUDeviceRegionRawMem {
+  fn drop(&mut self) {
+    let pop_dev = CudaDevice::get_current().unwrap();
+    CudaDevice::synchronize().unwrap();
+    match unsafe { cuda_free_device::<u8>(self.dptr) } {
+      Err(_) => panic!(),
+      Ok(_) => {}
+    }
+    CudaDevice::set_current(pop_dev).unwrap();
+  }
+}
+
+impl GPUDeviceMem<u8> for GPUDeviceRegionRawMem {
+  fn as_dptr(&self) -> *const u8 {
+    self.dptr
+  }
+
+  fn as_mut_dptr(&self) -> *mut u8 {
+    self.dptr
+  }
+
+  fn len(&self) -> usize {
+    self.phsz
+  }
+
+  fn size_bytes(&self) -> usize {
+    self.phsz
+  }
+}
+
+// TODO:
+// Very aggressive region-reclaiming arena.
+// Designed for "bursts" of allocations, usually for scratch memory,
+// where _all_ active regions are reclaimed shortly after creation.
+#[derive(Clone)]
+pub struct GPUDeviceBurstArena {
+  inner:    Arc<Mutex<GPUDeviceBurstArenaInner>>,
+}
+
+impl GPUDeviceBurstArena {
+  pub fn with_limit(dev: GPUDeviceId, max_phsz: usize) -> Self {
+    GPUDeviceBurstArena{
+      inner:    Arc::new(Mutex::new(GPUDeviceBurstArenaInner{
+        dev:        dev,
+        max_phsz:   max_phsz,
+        regions:    vec![],
+        used0:      0,
+        used_ext:   0,
+        reserved:   0,
+      })),
+    }
+  }
+
+  pub fn reserve<T>(&self, req_len: usize) where T: Copy {
+    let req_phsz = req_len * size_of::<T>();
+    self.reserve_bytes(req_phsz);
+  }
+
+  pub fn reserve_bytes(&self, req_phsz: usize) {
+    let mut inner = self.inner.lock().unwrap();
+    inner.reserve_bytes(req_phsz);
+  }
+
+  pub fn prealloc<T>(&self, len: usize, conn: GPUDeviceConn) where T: Copy {
+    let _reg = unsafe { self.alloc::<T>(len, conn) };
+  }
+
+  pub unsafe fn alloc<T>(&self, len: usize, conn: GPUDeviceConn) -> GPUDeviceRegionMem<T> where T: Copy {
+    let mut inner = self.inner.lock().unwrap();
+    inner.alloc::<T>(len, conn)
+  }
+}
+
+pub struct GPUDeviceBurstArenaInner {
+  dev:      GPUDeviceId,
+  max_phsz: usize,
+  regions:  Vec<Arc<GPUDeviceRegionRawMem>>,
+  used0:    usize,
+  used_ext: usize,
+  reserved: usize,
+}
+
+impl GPUDeviceBurstArenaInner {
+  pub fn _check_all_regions_free(&self) -> bool {
+    for reg in self.regions.iter() {
+      if Arc::strong_count(reg) > 1 {
+        return false;
+      }
+    }
+    true
+  }
+
+  pub unsafe fn _merge_all_regions(&mut self, req_phsz: usize) {
+    assert!(req_phsz <= self.max_phsz);
+    let mut total_phsz = 0;
+    for reg in self.regions.iter() {
+      total_phsz += reg.phsz;
+    }
+    self.used0 = 0;
+    self.used_ext = 0;
+    if req_phsz <= total_phsz && self.regions.len() == 1 {
+      // Do nothing.
+    } else {
+      let merge_phsz = max(max(total_phsz, self.reserved), req_phsz);
+      assert!(merge_phsz <= self.max_phsz);
+      self.regions.clear();
+      let dptr = match unsafe { cuda_alloc_device::<u8>(merge_phsz) } {
+        Err(_) => panic!(),
+        Ok(dptr) => dptr,
+      };
+      let reg = Arc::new(GPUDeviceRegionRawMem{
+        dev:    self.dev,
+        dptr:   dptr,
+        phsz:   merge_phsz,
+        rdup:   merge_phsz,
+      });
+      self.regions.push(reg.clone());
+    }
+  }
+
+  pub fn reserve_bytes(&mut self, req_phsz: usize) {
+    self.reserved = max(self.reserved, req_phsz);
+  }
+
+  pub unsafe fn alloc<T>(&mut self, len: usize, conn: GPUDeviceConn) -> GPUDeviceRegionMem<T> where T: Copy {
+    assert_eq!(self.dev, conn.device());
+    let phsz = len * size_of::<T>();
+    if self._check_all_regions_free() {
+      self._merge_all_regions(phsz);
+    }
+    let mem: Arc<GPUDeviceMem<u8>> = if self.used0 + phsz <= self.regions[0].phsz {
+      let dptr = self.regions[0].dptr.offset(self.used0 as _);
+      let slice = Arc::new(GPUDeviceRegionSliceMem{
+        dev:    self.dev,
+        dptr:   dptr,
+        phsz:   phsz,
+        root:   self.regions[0].clone(),
+      });
+      self.used0 += phsz;
+      slice
+    } else {
+      let dptr = match cuda_alloc_device::<u8>(phsz) {
+        Err(_) => panic!(),
+        Ok(dptr) => dptr,
+      };
+      let reg = Arc::new(GPUDeviceRegionRawMem{
+        dev:    self.dev,
+        dptr:   dptr,
+        phsz:   phsz,
+        rdup:   phsz,
+      });
+      self.regions.push(reg.clone());
+      self.used_ext += phsz;
+      reg
+    };
+    assert!(self.regions[0].phsz + self.used_ext <= self.max_phsz);
+    GPUDeviceRegionMem{
+      raw:  mem,
+      len:  len,
+      _m:   PhantomData,
+    }
+  }
 }
 
 pub struct GPUDeviceArena {
@@ -209,12 +424,12 @@ impl GPUDeviceArena {
 
 pub struct GPUDeviceArenaInner {
   dev:      GPUDeviceId,
-  chunks:   HashMap<usize, Vec<Arc<GPUDeviceArenaChunkRawMem>>>,
-  //free:     HashMap<usize, Vec<Arc<GPUDeviceArenaChunkRawMem>>>,
+  chunks:   HashMap<usize, Vec<Arc<GPUDeviceRegionRawMem>>>,
+  //free:     HashMap<usize, Vec<Arc<GPUDeviceRegionRawMem>>>,
 }
 
 impl GPUDeviceArenaInner {
-  pub unsafe fn alloc(&mut self, phsz: usize, conn: GPUDeviceConn) -> Arc<GPUDeviceArenaChunkRawMem> {
+  pub unsafe fn alloc(&mut self, phsz: usize, conn: GPUDeviceConn) -> Arc<GPUDeviceRegionRawMem> {
     // TODO: round up the alloc size to a nice round number.
     let rdup_phsz = if phsz <= 512 {
       (phsz + 512 - 1) / 512 * 512
@@ -247,7 +462,7 @@ impl GPUDeviceArenaInner {
       }
       Ok(dptr) => dptr,
     };
-    let chunk = Arc::new(GPUDeviceArenaChunkRawMem{
+    let chunk = Arc::new(GPUDeviceRegionRawMem{
       dev:  self.dev,
       dptr: dptr,
       phsz: phsz,
@@ -311,11 +526,23 @@ pub trait GPUDeviceMem<T> where T: Copy {
   fn size_bytes(&self) -> usize;
 }
 
-pub struct GPUDeviceRawMem<T> {
+pub struct GPUDeviceRawMem<T> where T: Copy {
   dev:  GPUDeviceId,
   dptr: *mut T,
   len:  usize,
   phsz: usize,
+}
+
+impl<T> Drop for GPUDeviceRawMem<T> where T: Copy {
+  fn drop(&mut self) {
+    let pop_dev = CudaDevice::get_current().unwrap();
+    CudaDevice::synchronize().unwrap();
+    match unsafe { cuda_free_device::<T>(self.dptr) } {
+      Err(_) => panic!(),
+      Ok(_) => {}
+    }
+    CudaDevice::set_current(pop_dev).unwrap();
+  }
 }
 
 impl<T> GPUDeviceRawMem<T> where T: Copy {
