@@ -193,7 +193,7 @@ where WTy: GPUTyped + CudnnDataTypeExt,
   let workspace_limit = query_workspace_limit();
   conn.sync();
 
-  let cudnn_h = conn.cudnn();
+  let mut cudnn_h = conn.cudnn();
   let kernel_desc = CudnnFilterDesc::<WTy>::create().unwrap();
   let src_desc = CudnnTensorDesc::<XTy>::create().unwrap();
   let dst_desc = CudnnTensorDesc::<YTy>::create().unwrap();

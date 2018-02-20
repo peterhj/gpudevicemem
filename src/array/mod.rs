@@ -14,7 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-use super::{GPUDeviceConn, GPUDeviceMem, GPUDeviceRawMem, GPUDeviceStreamMem};
+use ::{GPUDeviceConn, GPUDeviceMem, GPUDeviceRawMem};
+use ffi::routines_gpu::*;
 
 use arrayidx::*;
 use cuda::runtime::*;
@@ -150,7 +151,7 @@ impl<Idx, T> GPUDeviceArray<Idx, T> where Idx: ArrayIndex, T: Copy {
           src.mem.as_dptr(),
           len,
           CudaMemcpyKind::DeviceToDevice,
-          &conn.stream().cuda_stream(),
+          &mut conn.cuda_stream(),
       ) } {
         Err(_) => panic!(),
         Ok(_) => {}
@@ -170,7 +171,7 @@ impl<Idx, T> GPUDeviceArray<Idx, T> where Idx: ArrayIndex, T: Copy {
           src.as_ptr(),
           len,
           CudaMemcpyKind::HostToDevice,
-          &conn.stream().cuda_stream(),
+          &mut conn.cuda_stream(),
       ) } {
         Err(_) => panic!(),
         Ok(_) => {}
@@ -191,7 +192,7 @@ impl<Idx, T> GPUDeviceArray<Idx, T> where Idx: ArrayIndex, T: Copy {
           self.mem.as_dptr(),
           len,
           CudaMemcpyKind::DeviceToHost,
-          &conn.stream().cuda_stream(),
+          &mut conn.cuda_stream(),
       ) } {
         Err(_) => panic!(),
         Ok(_) => {}
@@ -373,7 +374,7 @@ impl<Idx, T> GPUDeviceArrayView<Idx, T> where Idx: ArrayIndex, T: ZeroBits + Cop
   pub fn set_zeros(&self, conn: &GPUDeviceConn) {
     //println!("DEBUG: GPUDeviceArrayView: set_zeros");
     if self.size.is_packed(&self.stride) {
-      let res = unsafe { cuda_memset_async(self.mem.as_mut_dptr() as *mut u8, 0, self.mem.size_bytes(), &conn.stream().cuda_stream()) };
+      let res = unsafe { cuda_memset_async(self.mem.as_mut_dptr() as *mut u8, 0, self.mem.size_bytes(), &mut conn.cuda_stream()) };
       assert!(res.is_ok());
     } else {
       unimplemented!();
@@ -385,13 +386,15 @@ impl<Idx> GPUDeviceArrayView<Idx, f32> where Idx: ArrayIndex {
   pub fn set_constant(&self, c: f32, conn: &GPUDeviceConn) {
     if self.size.is_packed(&self.stride) {
       let len = self.size.flat_len();
-      // TODO
-      unimplemented!();
-      /*unsafe { devicemem_gpu_set_constant_f32(
+      // TODO: error handling.
+      let mut stream = conn.cuda_stream();
+      unsafe { devicemem_gpu_set_constant_flat_map_f32(
           len as _,
           c,
           self.mem.as_mut_dptr(),
-      ) };*/
+          conn.cuda_kernel_cfg() as *const _,
+          stream.as_ptr(),
+      ) };
     } else {
       unimplemented!();
     }

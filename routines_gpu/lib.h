@@ -84,6 +84,19 @@ void devicemem_gpu_flat_mult_add_f32(
     struct CUstream_st *stream);
 
 // "flat_map.cu"
+void devicemem_gpu_set_constant_flat_map_f32(
+    uint32_t len,
+    float c,
+    float *y,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream);
+void devicemem_gpu_mult_constant_flat_map_f32(
+    uint32_t len,
+    float c,
+    const float *x,
+    float *y,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream);
 /*void devicemem_gpu_copy_flat_map_f32(
     uint32_t len,
     const float *x,

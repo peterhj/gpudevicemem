@@ -40,6 +40,7 @@ fn main() {
     .include("/usr/local/cuda/include")
     .file("routines_gpu/bcast_flat_linear.cu")
     .file("routines_gpu/flat_linear.cu")
+    .file("routines_gpu/flat_map.cu")
     .file("routines_gpu/reduce.cu")
     .compile("libdevicemem_routines_gpu.a");
 
@@ -54,6 +55,9 @@ fn main() {
     // "flat_linear.cu"
     .whitelist_function("devicemem_gpu_flat_mult_f32")
     .whitelist_function("devicemem_gpu_flat_mult_add_f32")
+    // "flat_map.cu"
+    .whitelist_function("devicemem_gpu_set_constant_flat_map_f32")
+    .whitelist_function("devicemem_gpu_mult_constant_flat_map_f32")
     // "reduce.cu"
     .whitelist_function("devicemem_gpu_sum_I1ab_Ob_packed_deterministic_f32")
     //.whitelist_function("devicemem_gpu_square_sum_I1ab_Ob_packed_deterministic_f32")
