@@ -471,7 +471,7 @@ impl<Idx> GPUDeviceArrayViewMut<Idx, f32> where Idx: ArrayIndex {
           c,
           self.as_mut_dptr(),
           conn.cuda_kernel_cfg() as *const _,
-          stream.as_ptr(),
+          stream.as_mut_ptr(),
       ) };
     } else {
       unimplemented!();
@@ -489,7 +489,7 @@ impl<Idx> GPUDeviceArrayViewMut<Idx, f32> where Idx: ArrayIndex {
           x.as_dptr(),
           self.as_mut_dptr(),
           conn.cuda_kernel_cfg() as *const _,
-          stream.as_ptr(),
+          stream.as_mut_ptr(),
       ) };
     } else {
       unimplemented!();
