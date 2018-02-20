@@ -14,6 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+#![feature(specialization)]
+//#![feature(trait_alias)]
+
 extern crate arrayidx;
 extern crate cuda;
 extern crate cuda_blas;
