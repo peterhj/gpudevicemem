@@ -678,6 +678,50 @@ impl<T> GPUDeviceMem<T> for GPUDeviceRawMem<T> where T: Copy {
   }
 }
 
+/*pub struct GPUDeviceMemView<T> where T: Copy {
+  len:      usize,
+  offset:   usize,
+  mem:      Arc<GPUDeviceMem<T>>,
+}
+
+impl<T> GPUDeviceMemView<T> where T: Copy {
+  pub unsafe fn as_ptr(&self) -> *const T {
+    self.mem.as_dptr().offset(self.len as _)
+  }
+
+  pub fn len(&self) -> usize {
+    self.len
+  }
+
+  pub fn size_bytes(&self) -> usize {
+    self.len * size_of::<T>()
+  }
+}
+
+pub struct GPUDeviceMemViewMut<T> where T: Copy {
+  len:      usize,
+  offset:   usize,
+  mem:      Arc<GPUDeviceMem<T>>,
+}
+
+impl<T> GPUDeviceMemViewMut<T> where T: Copy {
+  pub unsafe fn as_ptr(&self) -> *const T {
+    self.mem.as_dptr().offset(self.len as _)
+  }
+
+  pub unsafe fn as_mut_ptr(&self) -> *mut T {
+    self.mem.as_mut_dptr().offset(self.len as _)
+  }
+
+  pub fn len(&self) -> usize {
+    self.len
+  }
+
+  pub fn size_bytes(&self) -> usize {
+    self.len * size_of::<T>()
+  }
+}*/
+
 /*pub struct GPUDeviceResizableMem<T> {
   dev:  GPUDeviceId,
   dptr: *mut T,
@@ -790,48 +834,4 @@ extern "C" fn dataflow_wait(stream: cudaStream_t, status: cudaError_t, wait_raw_
     xtoken.wait_excl(wait.stream.clone());
   }
   assert!(wait.stokens.is_empty(), "shared tokens are not supported yet");
-}*/
-
-/*pub struct GPUDeviceMemRef<T> where T: Copy {
-  mem:  Rc<GPUDeviceMem<T>>,
-  dptr: *mut T,
-  len:  usize,
-}
-
-impl<T> GPUDeviceMemRef<T> where T: Copy {
-  pub unsafe fn as_ptr(&self) -> *const T {
-    self.dptr
-  }
-
-  pub fn len(&self) -> usize {
-    self.len
-  }
-
-  pub fn size_bytes(&self) -> usize {
-    self.len * size_of::<T>()
-  }
-}
-
-pub struct GPUDeviceMemRefMut<T> where T: Copy {
-  mem:  Rc<GPUDeviceMem<T>>,
-  dptr: *mut T,
-  len:  usize,
-}
-
-impl<T> GPUDeviceMemRefMut<T> where T: Copy {
-  pub unsafe fn as_ptr(&self) -> *const T {
-    self.dptr
-  }
-
-  pub unsafe fn as_mut_ptr(&self) -> *mut T {
-    self.dptr
-  }
-
-  pub fn len(&self) -> usize {
-    self.len
-  }
-
-  pub fn size_bytes(&self) -> usize {
-    self.len * size_of::<T>()
-  }
 }*/
