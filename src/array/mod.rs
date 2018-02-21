@@ -1,5 +1,5 @@
 /*
-Copyright 2017 the devicemem_gpu authors
+Copyright 2017 the gpudevicemem authors
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -544,7 +544,7 @@ impl<Idx> GPUDeviceArrayViewMutConstantOpsExt<f32> for GPUDeviceArrayViewMut<Idx
       let len = self.size.flat_len();
       // TODO: error handling.
       let mut stream = conn.cuda_stream();
-      unsafe { devicemem_gpu_set_constant_flat_map_f32(
+      unsafe { gpudevicemem_set_constant_flat_map_f32(
           len as _,
           c,
           self.as_mut_dptr(),
@@ -561,7 +561,7 @@ impl<Idx> GPUDeviceArrayViewMutConstantOpsExt<f32> for GPUDeviceArrayViewMut<Idx
       let len = self.size.flat_len();
       // TODO: error handling.
       let mut stream = conn.cuda_stream();
-      unsafe { devicemem_gpu_mult_constant_flat_map_f32(
+      unsafe { gpudevicemem_mult_constant_flat_map_f32(
           len as _,
           c,
           x.as_dptr(),

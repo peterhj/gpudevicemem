@@ -1,5 +1,5 @@
 /*
-Copyright 2017 the devicemem authors
+Copyright 2017 the gpudevicemem authors
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -37,7 +37,7 @@ public:
 };
 
 template <typename T, typename Map, typename Reduce>
-__global__ void devicemem_gpu_map_reduce_Iab_Ob_packed_deterministic_kernel(
+__global__ void gpudevicemem_map_reduce_Iab_Ob_packed_deterministic_kernel(
     uint32_t reduce_dim,
     uint32_t outer_dim,
     const T *x,
@@ -64,7 +64,7 @@ __global__ void devicemem_gpu_map_reduce_Iab_Ob_packed_deterministic_kernel(
   }
 }
 
-extern "C" void devicemem_gpu_sum_Iab_Ob_packed_deterministic_f32(
+extern "C" void gpudevicemem_sum_Iab_Ob_packed_deterministic_f32(
     uint32_t reduce_dim,
     uint32_t outer_dim,
     const float *x,
@@ -73,12 +73,12 @@ extern "C" void devicemem_gpu_sum_Iab_Ob_packed_deterministic_f32(
     cudaStream_t stream)
 {
   assert(check_power_of_2(cfg->flat_block_dim().x));
-  devicemem_gpu_map_reduce_Iab_Ob_packed_deterministic_kernel<float, CopyMap<float>, AddReduce<float>><<<cfg->flat_block_count(outer_dim), cfg->flat_block_dim(), cfg->flat_block_len() * sizeof(float), stream>>>(
+  gpudevicemem_map_reduce_Iab_Ob_packed_deterministic_kernel<float, CopyMap<float>, AddReduce<float>><<<cfg->flat_block_count(outer_dim), cfg->flat_block_dim(), cfg->flat_block_len() * sizeof(float), stream>>>(
       reduce_dim, outer_dim, x, y);
 }
 
 template <typename T, typename Map, typename Reduce>
-__global__ void devicemem_gpu_map_reduce_Iabc_Ob_packed_deterministic_kernel(
+__global__ void gpudevicemem_map_reduce_Iabc_Ob_packed_deterministic_kernel(
     uint32_t reduce_inner_dim,
     uint32_t mid_dim,
     uint32_t reduce_outer_dim,
@@ -109,7 +109,7 @@ __global__ void devicemem_gpu_map_reduce_Iabc_Ob_packed_deterministic_kernel(
 }
 
 template <typename T, typename Map, typename Reduce>
-__global__ void devicemem_gpu_map_reduce_Iabc_Ob_packed_deterministic_v2_kernel(
+__global__ void gpudevicemem_map_reduce_Iabc_Ob_packed_deterministic_v2_kernel(
     uint32_t reduce_inner_dim,
     uint32_t mid_dim,
     uint32_t reduce_outer_dim,
@@ -140,7 +140,7 @@ __global__ void devicemem_gpu_map_reduce_Iabc_Ob_packed_deterministic_v2_kernel(
   }
 }
 
-extern "C" void devicemem_gpu_sum_Iabc_Ob_packed_deterministic_f32(
+extern "C" void gpudevicemem_sum_Iabc_Ob_packed_deterministic_f32(
     uint32_t reduce_inner_dim,
     uint32_t mid_dim,
     uint32_t reduce_outer_dim,
@@ -150,11 +150,11 @@ extern "C" void devicemem_gpu_sum_Iabc_Ob_packed_deterministic_f32(
     cudaStream_t stream)
 {
   assert(check_power_of_2(cfg->flat_block_dim().x));
-  devicemem_gpu_map_reduce_Iabc_Ob_packed_deterministic_v2_kernel<float, CopyMap<float>, AddReduce<float>><<<cfg->flat_block_count(mid_dim), cfg->flat_block_dim(), cfg->flat_block_len() * sizeof(float), stream>>>(
+  gpudevicemem_map_reduce_Iabc_Ob_packed_deterministic_v2_kernel<float, CopyMap<float>, AddReduce<float>><<<cfg->flat_block_count(mid_dim), cfg->flat_block_dim(), cfg->flat_block_len() * sizeof(float), stream>>>(
       reduce_inner_dim, mid_dim, reduce_outer_dim, x, y);
 }
 
-extern "C" void devicemem_gpu_square_map_sum_Iabc_Ob_packed_deterministic_f32(
+extern "C" void gpudevicemem_square_map_sum_Iabc_Ob_packed_deterministic_f32(
     uint32_t reduce_inner_dim,
     uint32_t mid_dim,
     uint32_t reduce_outer_dim,
@@ -164,6 +164,6 @@ extern "C" void devicemem_gpu_square_map_sum_Iabc_Ob_packed_deterministic_f32(
     cudaStream_t stream)
 {
   assert(check_power_of_2(cfg->flat_block_dim().x));
-  devicemem_gpu_map_reduce_Iabc_Ob_packed_deterministic_v2_kernel<float, SquareMap<float>, AddReduce<float>><<<cfg->flat_block_count(mid_dim), cfg->flat_block_dim(), cfg->flat_block_len() * sizeof(float), stream>>>(
+  gpudevicemem_map_reduce_Iabc_Ob_packed_deterministic_v2_kernel<float, SquareMap<float>, AddReduce<float>><<<cfg->flat_block_count(mid_dim), cfg->flat_block_dim(), cfg->flat_block_len() * sizeof(float), stream>>>(
       reduce_inner_dim, mid_dim, reduce_outer_dim, x, y);
 }

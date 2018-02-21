@@ -1,5 +1,5 @@
 /*
-Copyright 2017 the devicemem authors
+Copyright 2017 the gpudevicemem authors
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ public:
 };
 
 template <typename T, typename FlatMap>
-__global__ void devicemem_gpu_constant_flat_map_inplace_kernel(
+__global__ void gpudevicemem_constant_flat_map_inplace_kernel(
     uint32_t len,
     T c,
     T *y)
@@ -38,14 +38,14 @@ __global__ void devicemem_gpu_constant_flat_map_inplace_kernel(
   }
 }
 
-extern "C" void devicemem_gpu_set_constant_flat_map_f32(
+extern "C" void gpudevicemem_set_constant_flat_map_f32(
     uint32_t len,
     float c,
     float *y,
     const KernelConfig *cfg,
     cudaStream_t stream)
 {
-  devicemem_gpu_constant_flat_map_inplace_kernel<float, SetConstantFlatMap<float>><<<cfg->flat_grid_dim(len), cfg->flat_block_dim(), 0, stream>>>(
+  gpudevicemem_constant_flat_map_inplace_kernel<float, SetConstantFlatMap<float>><<<cfg->flat_grid_dim(len), cfg->flat_block_dim(), 0, stream>>>(
       len, c, y);
 }
 
@@ -58,7 +58,7 @@ public:
 };
 
 template <typename T, typename FlatMap>
-__global__ void devicemem_gpu_constant_flat_map_kernel(
+__global__ void gpudevicemem_constant_flat_map_kernel(
     uint32_t len,
     T c,
     const T *x,
@@ -69,7 +69,7 @@ __global__ void devicemem_gpu_constant_flat_map_kernel(
   }
 }
 
-extern "C" void devicemem_gpu_mult_constant_flat_map_f32(
+extern "C" void gpudevicemem_mult_constant_flat_map_f32(
     uint32_t len,
     float c,
     const float *x,
@@ -77,12 +77,12 @@ extern "C" void devicemem_gpu_mult_constant_flat_map_f32(
     const KernelConfig *cfg,
     cudaStream_t stream)
 {
-  devicemem_gpu_constant_flat_map_kernel<float, MultConstantFlatMap<float>><<<cfg->flat_grid_dim(len), cfg->flat_block_dim(), 0, stream>>>(
+  gpudevicemem_constant_flat_map_kernel<float, MultConstantFlatMap<float>><<<cfg->flat_grid_dim(len), cfg->flat_block_dim(), 0, stream>>>(
       len, c, x, y);
 }
 
 /*template <typename T, typename FlatMap>
-__global__ void devicemem_gpu_generic_flat_map_kernel(
+__global__ void gpudevicemem_generic_flat_map_kernel(
     uint32_t len,
     const T *x,
     T *y)

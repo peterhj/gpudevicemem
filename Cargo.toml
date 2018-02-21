@@ -1,10 +1,10 @@
 [package]
-name = "devicemem_gpu"
+name = "gpudevicemem"
 version = "0.0.1"
 authors = ["Peter Jin <peterhaijin@gmail.com>"]
 
 [lib]
-name = "devicemem_gpu"
+name = "gpudevicemem"
 path = "src/lib.rs"
 
 [build-dependencies]

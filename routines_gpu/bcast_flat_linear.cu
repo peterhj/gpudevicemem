@@ -1,5 +1,5 @@
 /*
-Copyright 2017 the devicemem authors
+Copyright 2017 the gpudevicemem authors
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@ limitations under the License.
 #include <cuda_runtime.h>
 
 template <typename T>
-__global__ void devicemem_gpu_bcast_flat_mult_I1b_I2ab_Oab_packed_kernel(
+__global__ void gpudevicemem_bcast_flat_mult_I1b_I2ab_Oab_packed_kernel(
     uint32_t len,
     uint32_t inner_dim,
     uint32_t bcast_dim,
@@ -39,7 +39,7 @@ __global__ void devicemem_gpu_bcast_flat_mult_I1b_I2ab_Oab_packed_kernel(
   }
 }
 
-extern "C" void devicemem_gpu_bcast_flat_mult_I1b_I2ab_Oab_packed_f32(
+extern "C" void gpudevicemem_bcast_flat_mult_I1b_I2ab_Oab_packed_f32(
     uint32_t inner_dim,
     uint32_t bcast_dim,
     const float *lx,
@@ -49,12 +49,12 @@ extern "C" void devicemem_gpu_bcast_flat_mult_I1b_I2ab_Oab_packed_f32(
     cudaStream_t stream)
 {
   uint32_t len = inner_dim * bcast_dim;
-  devicemem_gpu_bcast_flat_mult_I1b_I2ab_Oab_packed_kernel<float><<<cfg->flat_grid_dim(len), cfg->flat_block_dim(), 0, stream>>>(
+  gpudevicemem_bcast_flat_mult_I1b_I2ab_Oab_packed_kernel<float><<<cfg->flat_grid_dim(len), cfg->flat_block_dim(), 0, stream>>>(
       len, inner_dim, bcast_dim, lx, rx, y);
 }
 
 template <typename T>
-__global__ void devicemem_gpu_bcast_flat_mult_add_I1b_I2ab_I3b_Oab_packed_kernel(
+__global__ void gpudevicemem_bcast_flat_mult_add_I1b_I2ab_I3b_Oab_packed_kernel(
     uint32_t len,
     uint32_t inner_dim,
     uint32_t bcast_dim,
@@ -76,7 +76,7 @@ __global__ void devicemem_gpu_bcast_flat_mult_add_I1b_I2ab_I3b_Oab_packed_kernel
   }
 }
 
-extern "C" void devicemem_gpu_bcast_flat_mult_add_I1b_I2ab_I3b_Oab_packed_f32(
+extern "C" void gpudevicemem_bcast_flat_mult_add_I1b_I2ab_I3b_Oab_packed_f32(
     uint32_t inner_dim,
     uint32_t bcast_dim,
     const float *lx,
@@ -87,12 +87,12 @@ extern "C" void devicemem_gpu_bcast_flat_mult_add_I1b_I2ab_I3b_Oab_packed_f32(
     cudaStream_t stream)
 {
   uint32_t len = inner_dim * bcast_dim;
-  devicemem_gpu_bcast_flat_mult_add_I1b_I2ab_I3b_Oab_packed_kernel<float><<<cfg->flat_grid_dim(len), cfg->flat_block_dim(), 0, stream>>>(
+  gpudevicemem_bcast_flat_mult_add_I1b_I2ab_I3b_Oab_packed_kernel<float><<<cfg->flat_grid_dim(len), cfg->flat_block_dim(), 0, stream>>>(
       len, inner_dim, bcast_dim, lx, rx, shift, y);
 }
 
 template <typename T>
-__global__ void devicemem_gpu_bcast_flat_mult_I1b_I2abc_Oabc_packed_kernel(
+__global__ void gpudevicemem_bcast_flat_mult_I1b_I2abc_Oabc_packed_kernel(
     uint32_t len,
     uint32_t inner_dim,
     uint32_t bcast_dim,
@@ -114,7 +114,7 @@ __global__ void devicemem_gpu_bcast_flat_mult_I1b_I2abc_Oabc_packed_kernel(
   }
 }
 
-extern "C" void devicemem_gpu_bcast_flat_mult_I1b_I2abc_Oabc_packed_f32(
+extern "C" void gpudevicemem_bcast_flat_mult_I1b_I2abc_Oabc_packed_f32(
     uint32_t inner_dim,
     uint32_t bcast_dim,
     uint32_t outer_dim,
@@ -125,12 +125,12 @@ extern "C" void devicemem_gpu_bcast_flat_mult_I1b_I2abc_Oabc_packed_f32(
     cudaStream_t stream)
 {
   uint32_t len = inner_dim * bcast_dim * outer_dim;
-  devicemem_gpu_bcast_flat_mult_I1b_I2abc_Oabc_packed_kernel<float><<<cfg->flat_grid_dim(len), cfg->flat_block_dim(), 0, stream>>>(
+  gpudevicemem_bcast_flat_mult_I1b_I2abc_Oabc_packed_kernel<float><<<cfg->flat_grid_dim(len), cfg->flat_block_dim(), 0, stream>>>(
       len, inner_dim, bcast_dim, outer_dim, lx, rx, y);
 }
 
 template <typename T>
-__global__ void devicemem_gpu_bcast_flat_mult_add_I1b_I2abc_I3b_Oabc_packed_kernel(
+__global__ void gpudevicemem_bcast_flat_mult_add_I1b_I2abc_I3b_Oabc_packed_kernel(
     uint32_t len,
     uint32_t inner_dim,
     uint32_t bcast_dim,
@@ -154,7 +154,7 @@ __global__ void devicemem_gpu_bcast_flat_mult_add_I1b_I2abc_I3b_Oabc_packed_kern
   }
 }
 
-extern "C" void devicemem_gpu_bcast_flat_mult_add_I1b_I2abc_I3b_Oabc_packed_f32(
+extern "C" void gpudevicemem_bcast_flat_mult_add_I1b_I2abc_I3b_Oabc_packed_f32(
     uint32_t inner_dim,
     uint32_t bcast_dim,
     uint32_t outer_dim,
@@ -166,6 +166,6 @@ extern "C" void devicemem_gpu_bcast_flat_mult_add_I1b_I2abc_I3b_Oabc_packed_f32(
     cudaStream_t stream)
 {
   uint32_t len = inner_dim * bcast_dim * outer_dim;
-  devicemem_gpu_bcast_flat_mult_add_I1b_I2abc_I3b_Oabc_packed_kernel<float><<<cfg->flat_grid_dim(len), cfg->flat_block_dim(), 0, stream>>>(
+  gpudevicemem_bcast_flat_mult_add_I1b_I2abc_I3b_Oabc_packed_kernel<float><<<cfg->flat_grid_dim(len), cfg->flat_block_dim(), 0, stream>>>(
       len, inner_dim, bcast_dim, outer_dim, lx, rx, shift, y);
 }

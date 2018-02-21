@@ -1,5 +1,5 @@
 /*
-Copyright 2017 the devicemem_gpu authors
+Copyright 2017 the gpudevicemem authors
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.

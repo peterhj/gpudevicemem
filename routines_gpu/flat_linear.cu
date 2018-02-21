@@ -1,5 +1,5 @@
 /*
-Copyright 2017 the devicemem authors
+Copyright 2017 the gpudevicemem authors
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@ limitations under the License.
 #include <cuda_runtime.h>
 
 template <typename T>
-__global__ void devicemem_gpu_flat_mult_kernel(
+__global__ void gpudevicemem_flat_mult_kernel(
     uint32_t len,
     const T* lx,
     const T* rx,
@@ -32,7 +32,7 @@ __global__ void devicemem_gpu_flat_mult_kernel(
   }
 }
 
-extern "C" void devicemem_gpu_flat_mult_f32(
+extern "C" void gpudevicemem_flat_mult_f32(
     uint32_t len,
     const float *lx,
     const float *rx,
@@ -40,12 +40,12 @@ extern "C" void devicemem_gpu_flat_mult_f32(
     const KernelConfig *cfg,
     cudaStream_t stream)
 {
-  devicemem_gpu_flat_mult_kernel<float><<<cfg->flat_grid_dim(len), cfg->flat_block_dim(), 0, stream>>>(
+  gpudevicemem_flat_mult_kernel<float><<<cfg->flat_grid_dim(len), cfg->flat_block_dim(), 0, stream>>>(
       len, lx, rx, y);
 }
 
 template <typename T>
-__global__ void devicemem_gpu_flat_mult_add_kernel(
+__global__ void gpudevicemem_flat_mult_add_kernel(
     uint32_t len,
     const T* lx,
     const T* rx,
@@ -60,7 +60,7 @@ __global__ void devicemem_gpu_flat_mult_add_kernel(
   }
 }
 
-extern "C" void devicemem_gpu_flat_mult_add_f32(
+extern "C" void gpudevicemem_flat_mult_add_f32(
     uint32_t len,
     const float *lx,
     const float *rx,
@@ -69,6 +69,6 @@ extern "C" void devicemem_gpu_flat_mult_add_f32(
     const KernelConfig *cfg,
     cudaStream_t stream)
 {
-  devicemem_gpu_flat_mult_add_kernel<float><<<cfg->flat_grid_dim(len), cfg->flat_block_dim(), 0, stream>>>(
+  gpudevicemem_flat_mult_add_kernel<float><<<cfg->flat_grid_dim(len), cfg->flat_block_dim(), 0, stream>>>(
       len, lx, rx, shift, y);
 }
