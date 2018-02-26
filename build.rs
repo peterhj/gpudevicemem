@@ -6,6 +6,7 @@ use walkdir::{WalkDir};
 
 use std::env;
 use std::path::{PathBuf};
+use std::process::{Command};
 
 fn main() {
   let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
@@ -43,6 +44,12 @@ fn main() {
     .file("routines_gpu/flat_map.cu")
     .file("routines_gpu/reduce.cu")
     .compile("libgpudevicemem_routines_gpu.a");
+
+  Command::new("rm")
+    .current_dir(&out_dir)
+    .arg("-f")
+    .arg(out_dir.join("routines_gpu_bind.rs").as_os_str().to_str().unwrap())
+    .status().unwrap();
 
   bindgen::Builder::default()
     .header("routines_gpu/lib.h")
