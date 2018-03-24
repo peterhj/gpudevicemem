@@ -17,10 +17,20 @@ pub struct KernelConfig {
 
 impl KernelConfig {
   pub fn new(arch_sum: &GPUDeviceArchSummary) -> Self {
+    let max_thblk_sz = match arch_sum.capability_major {
+      0 | 4 => unreachable!(),
+      1 => 512, // TODO: does 1.0 still even work?
+      _ => 1024,
+    };
+    let max_thblks_per_mp = match arch_sum.capability_major {
+      0 | 4 => unreachable!(),
+      1 | 2 | 3 => 16,
+      _ => 32,
+    };
     KernelConfig{
       // TODO
-      block_sz:     1024,
-      max_block_ct: 16 * arch_sum.mp_count as u32,
+      block_sz:     max_thblk_sz,
+      max_block_ct: (max_thblks_per_mp * arch_sum.mp_count) as u32,
     }
   }
 }

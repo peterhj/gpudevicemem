@@ -166,6 +166,7 @@ impl GPUDeviceRawStream {
 
 #[derive(Clone, Copy, Debug)]
 pub struct GPUDeviceArchSummary {
+  pub capability_major:     usize,
   pub mp_count:             usize,
   pub sharedmem_sz_per_mp:  usize,
   pub register_sz_per_mp:   usize,
@@ -190,6 +191,7 @@ impl GPUDeviceStreamPool {
     println!("DEBUG: cuda: device: index: {} shared mem per smp: {}", dev, dev_prop.shared_mem_per_multiprocessor);
     println!("DEBUG: cuda: device: index: {} registers per smp: {}", dev, dev_prop.regs_per_multiprocessor);*/
     let arch_sum = GPUDeviceArchSummary{
+      capability_major:     dev_prop.major as _,
       mp_count:             dev_prop.multiProcessorCount as _,
       sharedmem_sz_per_mp:  dev_prop.sharedMemPerMultiprocessor as _,
       register_sz_per_mp:   dev_prop.regsPerMultiprocessor as _,
@@ -250,6 +252,10 @@ impl<'a> GPUDeviceConn<'a> {
   }
 
   pub fn cuda_kernel_cfg(&self) -> &KernelConfig {
+    self.cuda_kernel_config()
+  }
+
+  pub fn cuda_kernel_config(&self) -> &KernelConfig {
     &self.kernel_cfg
   }
 
@@ -273,7 +279,7 @@ impl<'a> GPUDeviceConn<'a> {
     self.burst_arena.reserve_bytes(reserve);
   }
 
-  pub unsafe fn burst_alloc<T>(&self, len: usize) -> GPUDeviceRegionMem<T> where T: Copy {
+  pub unsafe fn burst_alloc<T>(&self, len: usize) -> GPUDeviceTypedMem<T> where T: Copy {
     self.burst_arena.alloc::<T>(len, self.clone())
   }*/
 
@@ -287,13 +293,37 @@ impl<'a> GPUDeviceConn<'a> {
   }
 }
 
-pub struct GPUDeviceRegionMem<T> where T: Copy {
+pub struct GPUAsyncSection {
+  event:    Arc<CudaEvent>,
+}
+
+impl GPUAsyncSection {
+  pub fn enter(&self) {
+    // TODO
+  }
+}
+
+pub struct GPUAsyncSectionGuard {
+}
+
+pub trait GPUDeviceMem<T> where T: Copy {
+  fn as_dptr(&self) -> *const T;
+  fn as_mut_dptr(&self) -> *mut T;
+  fn len(&self) -> usize;
+  fn size_bytes(&self) -> usize;
+
+  // TODO
+  fn async_wait(&self, _conn: GPUDeviceConn) { unimplemented!(); }
+  fn async_post(&self, _section: Arc<GPUAsyncSection>, _conn: GPUDeviceConn) { unimplemented!(); }
+}
+
+pub struct GPUDeviceTypedMem<T> where T: Copy {
   raw:  Arc<GPUDeviceMem<u8>>,
   len:  usize,
   _m:   PhantomData<T>,
 }
 
-impl<T> GPUDeviceMem<T> for GPUDeviceRegionMem<T> where T: Copy {
+impl<T> GPUDeviceMem<T> for GPUDeviceTypedMem<T> where T: Copy {
   fn as_dptr(&self) -> *const T {
     self.raw.as_dptr() as *const T
   }
@@ -340,13 +370,12 @@ pub struct GPUDeviceRegionRawMem {
   dev:  GPUDeviceId,
   dptr: *mut u8,
   phsz: usize,
-  rdup: usize,
 }
 
 impl Drop for GPUDeviceRegionRawMem {
   fn drop(&mut self) {
     let pop_dev = CudaDevice::get_current().unwrap();
-    CudaDevice::synchronize().unwrap();
+    //CudaDevice::synchronize().unwrap();
     CudaDevice::set_current(self.dev.0).unwrap();
     match unsafe { cuda_free_device::<u8>(self.dptr) } {
       Err(_) => panic!(),
@@ -374,10 +403,20 @@ impl GPUDeviceMem<u8> for GPUDeviceRegionRawMem {
   }
 }
 
-// TODO:
-// Very aggressive region-reclaiming arena.
-// Designed for "bursts" of allocations, usually for scratch memory,
-// where _all_ active regions are reclaimed shortly after creation.
+const BURST_MEM_ALIGN: usize = 16;
+
+fn round_up(sz: usize, alignment: usize) -> usize {
+  assert!(alignment >= 1);
+  (sz + alignment - 1) / alignment * alignment
+}
+
+fn check_alignment(sz: usize, alignment: usize) -> bool {
+  sz % alignment == 0
+}
+
+/// Very aggressive region-reclaiming arena.
+/// Designed for "bursts" of allocations, usually for scratch memory,
+/// where _all_ active regions are reclaimed shortly after creation.
 #[derive(Clone)]
 pub struct GPUDeviceBurstArena {
   inner:    Arc<Mutex<GPUDeviceBurstArenaInner>>,
@@ -407,11 +446,11 @@ impl GPUDeviceBurstArena {
     inner.reserve_bytes(req_phsz);
   }
 
-  pub fn prealloc<T>(&self, len: usize, conn: GPUDeviceConn) where T: Copy {
+  /*pub fn prealloc<T>(&self, len: usize, conn: GPUDeviceConn) where T: Copy {
     let _reg = unsafe { self.alloc::<T>(len, conn) };
-  }
+  }*/
 
-  pub unsafe fn alloc<T>(&self, len: usize, conn: GPUDeviceConn) -> GPUDeviceRegionMem<T> where T: Copy {
+  pub unsafe fn alloc<T>(&self, len: usize, conn: GPUDeviceConn) -> GPUDeviceTypedMem<T> where T: Copy {
     let mut inner = self.inner.lock().unwrap();
     inner.alloc::<T>(len, conn)
   }
@@ -427,7 +466,7 @@ pub struct GPUDeviceBurstArenaInner {
 }
 
 impl GPUDeviceBurstArenaInner {
-  pub fn _check_all_regions_free(&self) -> bool {
+  fn _check_all_regions_free(&self) -> bool {
     for reg in self.regions.iter().rev() {
       if Arc::strong_count(reg) > 1 {
         return false;
@@ -436,189 +475,81 @@ impl GPUDeviceBurstArenaInner {
     true
   }
 
-  pub unsafe fn _merge_all_regions(&mut self, req_phsz: usize) {
-    assert!(req_phsz <= self.max_phsz);
+  unsafe fn _merge_all_regions(&mut self, req_phsz: usize) {
+    assert!(req_phsz <= self.max_phsz, "GPUDeviceBurstArena exceeded allocation limit");
+    assert!(check_alignment(req_phsz, BURST_MEM_ALIGN));
     let total_phsz = self.used0 + self.used_ext;
+    assert!(check_alignment(total_phsz, BURST_MEM_ALIGN));
     self.used0 = 0;
     self.used_ext = 0;
     if req_phsz <= total_phsz && self.regions.len() == 1 {
       // Do nothing.
     } else {
       let merge_phsz = max(max(total_phsz, self.reserved), req_phsz);
-      assert!(merge_phsz <= self.max_phsz);
+      assert!(merge_phsz <= self.max_phsz, "GPUDeviceBurstArena exceeded allocation limit");
+      assert!(check_alignment(merge_phsz, BURST_MEM_ALIGN));
       self.regions.clear();
       let dptr = match cuda_alloc_device::<u8>(merge_phsz) {
-        Err(_) => panic!(),
+        Err(e) => panic!("GPUDeviceBurstArena: failed to alloc size {}: {:?}", merge_phsz, e),
         Ok(dptr) => dptr,
       };
       let reg = Arc::new(GPUDeviceRegionRawMem{
         dev:    self.dev,
         dptr:   dptr,
         phsz:   merge_phsz,
-        rdup:   merge_phsz,
+        //rdup:   merge_phsz,
       });
       self.regions.push(reg.clone());
     }
   }
 
-  pub fn reserve_bytes(&mut self, req_phsz: usize) {
-    self.reserved = max(self.reserved, req_phsz);
+  pub fn reserve_bytes(&mut self, bare_phsz: usize) {
+    let rdup_phsz = round_up(bare_phsz, BURST_MEM_ALIGN);
+    self.reserved = max(self.reserved, rdup_phsz);
   }
 
-  pub unsafe fn alloc<T>(&mut self, len: usize, conn: GPUDeviceConn) -> GPUDeviceRegionMem<T> where T: Copy {
+  pub unsafe fn alloc<T>(&mut self, len: usize, conn: GPUDeviceConn) -> GPUDeviceTypedMem<T> where T: Copy {
     assert_eq!(self.dev, conn.device());
-    let phsz = len * size_of::<T>();
+    let bare_phsz = len * size_of::<T>();
+    let rdup_phsz = round_up(bare_phsz, BURST_MEM_ALIGN);
     if self._check_all_regions_free() {
-      self._merge_all_regions(phsz);
+      self._merge_all_regions(rdup_phsz);
     }
     // TODO: alignment/padding.
-    let mem: Arc<GPUDeviceMem<u8>> = if self.used0 + phsz <= self.regions[0].phsz {
+    let mem: Arc<GPUDeviceMem<u8>> = if self.used0 + rdup_phsz <= self.regions[0].phsz {
       let dptr = self.regions[0].dptr.offset(self.used0 as _);
+      assert!(check_alignment(dptr as usize, BURST_MEM_ALIGN));
       let slice = Arc::new(GPUDeviceRegionSliceMem{
         dev:    self.dev,
         dptr:   dptr,
-        phsz:   phsz,
+        phsz:   rdup_phsz,
         _mem:   self.regions[0].clone(),
       });
-      self.used0 += phsz;
+      self.used0 += rdup_phsz;
       slice
     } else {
-      let dptr = match cuda_alloc_device::<u8>(phsz) {
-        Err(_) => panic!(),
+      let dptr = match cuda_alloc_device::<u8>(rdup_phsz) {
+        Err(e) => panic!("GPUDeviceBurstArena: failed to alloc size {}: {:?}", rdup_phsz, e),
         Ok(dptr) => dptr,
       };
+      assert!(check_alignment(dptr as usize, BURST_MEM_ALIGN));
       let reg = Arc::new(GPUDeviceRegionRawMem{
         dev:    self.dev,
         dptr:   dptr,
-        phsz:   phsz,
-        rdup:   phsz,
+        phsz:   rdup_phsz,
       });
       self.regions.push(reg.clone());
-      self.used_ext += phsz;
+      self.used_ext += rdup_phsz;
       reg
     };
     assert!(self.regions[0].phsz + self.used_ext <= self.max_phsz);
-    GPUDeviceRegionMem{
+    assert!(mem.size_bytes() >= bare_phsz);
+    GPUDeviceTypedMem{
       raw:  mem,
       len:  len,
       _m:   PhantomData,
     }
   }
-}
-
-pub struct GPUDeviceArena {
-  inner:    Arc<Mutex<GPUDeviceArenaInner>>,
-}
-
-impl GPUDeviceArena {
-  pub fn new(dev: GPUDeviceId) -> Self {
-    // TODO
-    unimplemented!();
-  }
-}
-
-pub struct GPUDeviceArenaInner {
-  dev:      GPUDeviceId,
-  chunks:   HashMap<usize, Vec<Arc<GPUDeviceRegionRawMem>>>,
-  //free:     HashMap<usize, Vec<Arc<GPUDeviceRegionRawMem>>>,
-}
-
-impl GPUDeviceArenaInner {
-  pub unsafe fn alloc(&mut self, phsz: usize, conn: GPUDeviceConn) -> Arc<GPUDeviceRegionRawMem> {
-    // TODO: round up the alloc size to a nice round number.
-    let rdup_phsz = if phsz <= 512 {
-      (phsz + 512 - 1) / 512 * 512
-    } else if phsz <= 32768 {
-      (phsz + 32768 - 1) / 32768 * 32768
-    } else {
-      (phsz + 1048576 - 1) / 1048576 * 1048576
-    };
-
-    if self.chunks.get(&rdup_phsz).is_none() {
-      self.chunks.insert(rdup_phsz, vec![]);
-    }
-
-    if !self.chunks.get(&rdup_phsz).unwrap().is_empty() {
-      let chunks = self.chunks.get(&rdup_phsz).unwrap();
-      for chunk in chunks.iter() {
-        if Arc::strong_count(chunk) == 1 {
-          return chunk.clone()
-        }
-      }
-    }
-
-    let dptr = match cuda_alloc_device::<u8>(rdup_phsz) {
-      Err(_) => {
-        self.collect_garbage();
-        match cuda_alloc_device::<u8>(phsz) {
-          Err(_) => panic!("GPUDeviceArena allocation failed"),
-          Ok(dptr) => dptr,
-        }
-      }
-      Ok(dptr) => dptr,
-    };
-    let chunk = Arc::new(GPUDeviceRegionRawMem{
-      dev:  self.dev,
-      dptr: dptr,
-      phsz: phsz,
-      rdup: rdup_phsz,
-    });
-    self.chunks.get_mut(&rdup_phsz).unwrap().push(chunk.clone());
-    chunk
-  }
-
-  pub fn collect_garbage(&mut self) {
-    for (_, mut chunks) in self.chunks.iter_mut() {
-      let mut free_idxs = vec![];
-      for (idx, chunk) in chunks.iter().enumerate() {
-        if Arc::strong_count(chunk) == 1 {
-          free_idxs.push(idx);
-        }
-      }
-      for &idx in free_idxs.iter().rev() {
-        chunks.remove(idx);
-      }
-    }
-  }
-}
-
-/*pub trait GPUDeviceAllocator {
-  unsafe fn alloc<T>(&self, len: usize, conn: GPUDeviceConn) -> Arc<GPUDeviceMem<T>> where T: Copy + 'static;
-}
-
-pub struct GPUDeviceRawAlloc {
-}
-
-impl GPUDeviceAllocator for GPUDeviceRawAlloc {
-  unsafe fn alloc<T>(&self, len: usize, conn: GPUDeviceConn) -> Arc<GPUDeviceMem<T>> where T: Copy + 'static {
-    Arc::new(GPUDeviceRawMem::<T>::alloc(len, conn))
-  }
-}*/
-
-/*pub struct GPUDeviceStreamAlloc {
-}
-
-impl GPUDeviceAllocator for GPUDeviceStreamAlloc {
-  unsafe fn alloc<T>(&self, len: usize, conn: GPUDeviceConn) -> Arc<GPUDeviceMem<T>> where T: Copy + 'static {
-    Arc::new(GPUDeviceStreamMem::<T>::alloc(len, conn))
-  }
-}
-
-pub struct GPUDeviceCachingStreamAlloc {
-}
-
-impl GPUDeviceAllocator for GPUDeviceCachingStreamAlloc {
-  unsafe fn alloc<T>(&self, len: usize, conn: GPUDeviceConn) -> Arc<GPUDeviceMem<T>> where T: Copy + 'static {
-    // TODO
-    Arc::new(GPUDeviceStreamMem::<T>::alloc(len, conn))
-  }
-}*/
-
-pub trait GPUDeviceMem<T> where T: Copy {
-  fn as_dptr(&self) -> *const T;
-  fn as_mut_dptr(&self) -> *mut T;
-  fn len(&self) -> usize;
-  fn size_bytes(&self) -> usize;
 }
 
 pub struct GPUDeviceRawMem<T> where T: Copy {
@@ -631,7 +562,7 @@ pub struct GPUDeviceRawMem<T> where T: Copy {
 impl<T> Drop for GPUDeviceRawMem<T> where T: Copy {
   fn drop(&mut self) {
     let pop_dev = CudaDevice::get_current().unwrap();
-    CudaDevice::synchronize().unwrap();
+    //CudaDevice::synchronize().unwrap();
     CudaDevice::set_current(self.dev.0).unwrap();
     match unsafe { cuda_free_device::<T>(self.dptr) } {
       Err(_) => panic!(),
@@ -645,9 +576,9 @@ impl<T> GPUDeviceRawMem<T> where T: Copy {
   pub unsafe fn alloc(len: usize, conn: GPUDeviceConn) -> GPUDeviceRawMem<T> where T: Copy {
     println!("DEBUG: GPUDeviceRawMem: alloc len: {}", len);
     assert!(len <= <i32>::max_value() as usize,
-        "device memory size should not exceed 2**31-1 elements");
+        "for safety, device memory size should not exceed 2**31-1 elements");
     let dptr = match cuda_alloc_device::<T>(len) {
-      Err(e) => panic!("GPUDeviceRawMem allocation failed: {:?}", e),
+      Err(e) => panic!("GPUDeviceRawMem: failed to alloc len {} elemsz {}: {:?}", len, size_of::<T>(), e),
       Ok(dptr) => dptr,
     };
     assert!(!dptr.is_null());
@@ -677,161 +608,3 @@ impl<T> GPUDeviceMem<T> for GPUDeviceRawMem<T> where T: Copy {
     self.phsz
   }
 }
-
-/*pub struct GPUDeviceMemView<T> where T: Copy {
-  len:      usize,
-  offset:   usize,
-  mem:      Arc<GPUDeviceMem<T>>,
-}
-
-impl<T> GPUDeviceMemView<T> where T: Copy {
-  pub unsafe fn as_ptr(&self) -> *const T {
-    self.mem.as_dptr().offset(self.len as _)
-  }
-
-  pub fn len(&self) -> usize {
-    self.len
-  }
-
-  pub fn size_bytes(&self) -> usize {
-    self.len * size_of::<T>()
-  }
-}
-
-pub struct GPUDeviceMemViewMut<T> where T: Copy {
-  len:      usize,
-  offset:   usize,
-  mem:      Arc<GPUDeviceMem<T>>,
-}
-
-impl<T> GPUDeviceMemViewMut<T> where T: Copy {
-  pub unsafe fn as_ptr(&self) -> *const T {
-    self.mem.as_dptr().offset(self.len as _)
-  }
-
-  pub unsafe fn as_mut_ptr(&self) -> *mut T {
-    self.mem.as_mut_dptr().offset(self.len as _)
-  }
-
-  pub fn len(&self) -> usize {
-    self.len
-  }
-
-  pub fn size_bytes(&self) -> usize {
-    self.len * size_of::<T>()
-  }
-}*/
-
-/*pub struct GPUDeviceResizableMem<T> {
-  dev:  GPUDeviceId,
-  dptr: *mut T,
-  len:  usize,
-  psz:  usize,
-}
-
-impl<T> GPUDeviceResizableMem<T> where T: Copy {
-  pub fn new(conn: GPUDeviceConn) -> GPUDeviceResizableMem<T> where T: Copy {
-    // TODO
-    unimplemented!();
-  }
-
-  pub fn reserve(&self, len: usize) {
-    // TODO
-    unimplemented!();
-  }
-}*/
-
-/*pub struct GPUDeviceStreamMem<T> {
-  dev:  GPUDeviceId,
-  stream:   Arc<GPUDeviceRawStream>,
-  dptr: *mut T,
-  len:  usize,
-  psz:  usize,
-}
-
-impl<T> Drop for GPUDeviceStreamMem<T> {
-  fn drop(&mut self) {
-    // TODO
-    unimplemented!();
-  }
-}*/
-
-/*impl<T> GPUDeviceStreamMem<T> where T: Copy {
-  pub unsafe fn alloc(len: usize, conn: GPUDeviceConn) -> GPUDeviceStreamMem<T> where T: Copy {
-    println!("DEBUG: GPUDeviceStreamMem: alloc len: {}", len);
-    assert!(len <= <u32>::max_value() as usize,
-        "device memory size should not exceed 2**31-1 elements");
-    let dev = conn.device();
-    let (dptr, psz) = match cuda_alloc_managed::<T>(len) {
-      Err(e) => panic!("GPUDeviceStreamMem allocation failed: {:?}", e),
-      Ok((dptr, psz)) => (dptr, psz),
-    };
-    assert!(!dptr.is_null());
-    // TODO: set hints.
-    assert!(cuda_mem_advise_set_preferred_location(dptr, psz, dev.0).is_ok());
-    // TODO: attach mem to stream.
-    let stream = conn.stream();
-    assert!(stream.attach_single_mem_async(dptr, psz).is_ok());
-    GPUDeviceStreamMem{
-      dev:  dev,
-      stream:   stream,
-      dptr: dptr,
-      len:  len,
-      psz:  psz,
-    }
-  }
-}*/
-
-/*pub struct GPUDeviceToken {
-  //producers:    Arc<AtomicArcList<GPUDeviceRawStream>>,
-  producers:    Arc<RwLock<Vec<Arc<GPUDeviceRawStream>>>>,
-}
-
-impl GPUDeviceToken {
-  pub fn post_excl(&self, stream: Arc<GPUDeviceRawStream>) {
-    self.producers.write().unwrap().push(stream);
-  }
-
-  pub fn wait_excl(&self, stream: Arc<GPUDeviceRawStream>) {
-    let mut producers_lock = self.producers.write().unwrap();
-    let producers: Vec<_> = producers_lock.drain(..).collect();
-    for producer in producers.iter() {
-      // TODO
-      /*if producer == stream {
-        continue;
-      }
-      producer.record_sync_event();
-      stream.wait_on_event(producer.sync_event());*/
-    }
-  }
-}*/
-
-/*pub struct GPUDevicePost {
-  stream:   Arc<GPUDeviceRawStream>,
-  xtokens:  Vec<GPUDeviceToken>,
-  stokens:  Vec<GPUDeviceToken>,
-}
-
-pub struct GPUDeviceWait {
-  stream:   Arc<GPUDeviceRawStream>,
-  xtokens:  Vec<GPUDeviceToken>,
-  stokens:  Vec<GPUDeviceToken>,
-}
-
-extern "C" fn dataflow_post(stream: cudaStream_t, status: cudaError_t, post_raw_data: *mut c_void) {
-  // TODO
-  let post: Arc<GPUDevicePost> = unsafe { Arc::from_raw(transmute(post_raw_data)) };
-  for xtoken in post.xtokens.iter() {
-    xtoken.post_excl(post.stream.clone());
-  }
-  assert!(post.stokens.is_empty(), "shared tokens are not supported yet");
-}
-
-extern "C" fn dataflow_wait(stream: cudaStream_t, status: cudaError_t, wait_raw_data: *mut c_void) {
-  // TODO
-  let wait: Arc<GPUDeviceWait> = unsafe { Arc::from_raw(transmute(wait_raw_data)) };
-  for xtoken in wait.xtokens.iter() {
-    xtoken.wait_excl(wait.stream.clone());
-  }
-  assert!(wait.stokens.is_empty(), "shared tokens are not supported yet");
-}*/

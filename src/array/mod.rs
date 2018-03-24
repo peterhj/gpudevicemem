@@ -224,6 +224,7 @@ impl<Idx, T> BatchArray for GPUDeviceInnerBatchArray<Idx, T> where Idx: ArrayInd
   }
 
   fn set_batch_size(&mut self, new_batch_sz: usize) {
+    assert!(new_batch_sz <= self.max_batch_sz);
     self.batch_sz = new_batch_sz;
   }
 }
