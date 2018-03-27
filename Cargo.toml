@@ -20,3 +20,5 @@ cuda_dnn = { path = "../libcuda_dnn" }
 float = { path = "../libfloat" }
 lazy_static = "*"
 memarray = { path = "../memarray" }
+parking_lot = "*"
+#parking_lot = { path = "../parking_lot" }

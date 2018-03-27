@@ -24,6 +24,7 @@ extern crate cuda_dnn;
 extern crate float;
 #[macro_use] extern crate lazy_static;
 extern crate memarray;
+extern crate parking_lot;
 
 use ffi::routines_gpu::{KernelConfig};
 
@@ -31,13 +32,14 @@ use ffi::routines_gpu::{KernelConfig};
 use cuda::runtime::*;
 use cuda_blas::{CublasHandle};
 use cuda_dnn::{CudnnHandle};
+use parking_lot::{Mutex, MutexGuard};
 
 use std::cmp::{max};
 use std::collections::{HashMap};
 use std::marker::{PhantomData};
 use std::mem::{size_of};
 use std::ops::{Deref, DerefMut};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc};
 //use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub mod array;
@@ -152,7 +154,7 @@ impl GPUDeviceRawStream {
   }
 
   pub fn cuda_stream(&self) -> MutexGuard<LazyCudaStream> {
-    self.cuda_stream.lock().unwrap()
+    self.cuda_stream.lock()
   }
 
   /*pub fn sync_event(&self) -> Arc<CudaEvent> {
@@ -264,15 +266,15 @@ impl<'a> GPUDeviceConn<'a> {
   }*/
 
   pub fn cuda_stream(&self) -> MutexGuard<LazyCudaStream> {
-    self.cuda_stream.lock().unwrap()
+    self.cuda_stream.lock()
   }
 
   pub fn cublas(&self) -> MutexGuard<LazyCublasHandle> {
-    self.cublas_h.lock().unwrap()
+    self.cublas_h.lock()
   }
 
   pub fn cudnn(&self) -> MutexGuard<LazyCudnnHandle> {
-    self.cudnn_h.lock().unwrap()
+    self.cudnn_h.lock()
   }
 
   /*pub fn burst_reserve_bytes(&self, reserve: usize) {
@@ -442,7 +444,7 @@ impl GPUDeviceBurstArena {
   }
 
   pub fn reserve_bytes(&self, req_phsz: usize) {
-    let mut inner = self.inner.lock().unwrap();
+    let mut inner = self.inner.lock();
     inner.reserve_bytes(req_phsz);
   }
 
@@ -451,7 +453,7 @@ impl GPUDeviceBurstArena {
   }*/
 
   pub unsafe fn alloc<T>(&self, len: usize, conn: GPUDeviceConn) -> GPUDeviceTypedMem<T> where T: Copy {
-    let mut inner = self.inner.lock().unwrap();
+    let mut inner = self.inner.lock();
     inner.alloc::<T>(len, conn)
   }
 }
