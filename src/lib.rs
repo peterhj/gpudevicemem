@@ -319,19 +319,26 @@ pub trait GPUDeviceMem<T> where T: Copy {
   fn async_post(&self, _section: Arc<GPUAsyncSection>, _conn: GPUDeviceConn) { unimplemented!(); }
 }
 
+pub trait GPUDeviceAlloc<T> where T: Copy + 'static {
+  type Mem: GPUDeviceMem<T> + 'static;
+
+  unsafe fn alloc(&self, len: usize, conn: GPUDeviceConn) -> Self::Mem;
+}
+
 pub struct GPUDeviceTypedMem<T> where T: Copy {
-  raw:  Arc<GPUDeviceMem<u8>>,
+  dptr: *mut T,
   len:  usize,
-  _m:   PhantomData<T>,
+  _mem: Arc<GPUDeviceMem<u8>>,
+  _mrk: PhantomData<T>,
 }
 
 impl<T> GPUDeviceMem<T> for GPUDeviceTypedMem<T> where T: Copy {
   fn as_dptr(&self) -> *const T {
-    self.raw.as_dptr() as *const T
+    self.dptr
   }
 
   fn as_mut_dptr(&self) -> *mut T {
-    self.raw.as_mut_dptr() as *mut T
+    self.dptr
   }
 
   fn len(&self) -> usize {
@@ -451,8 +458,12 @@ impl GPUDeviceBurstArena {
   /*pub fn prealloc<T>(&self, len: usize, conn: GPUDeviceConn) where T: Copy {
     let _reg = unsafe { self.alloc::<T>(len, conn) };
   }*/
+}
 
-  pub unsafe fn alloc<T>(&self, len: usize, conn: GPUDeviceConn) -> GPUDeviceTypedMem<T> where T: Copy {
+impl<T> GPUDeviceAlloc<T> for GPUDeviceBurstArena where T: Copy + 'static {
+  type Mem = GPUDeviceTypedMem<T>;
+
+  unsafe fn alloc(&self, len: usize, conn: GPUDeviceConn) -> GPUDeviceTypedMem<T> where T: Copy {
     let mut inner = self.inner.lock();
     inner.alloc::<T>(len, conn)
   }
@@ -517,7 +528,6 @@ impl GPUDeviceBurstArenaInner {
     if self._check_all_regions_free() {
       self._merge_all_regions(rdup_phsz);
     }
-    // TODO: alignment/padding.
     let mem: Arc<GPUDeviceMem<u8>> = if self.used0 + rdup_phsz <= self.regions[0].phsz {
       let dptr = self.regions[0].dptr.offset(self.used0 as _);
       assert!(check_alignment(dptr as usize, BURST_MEM_ALIGN));
@@ -547,10 +557,28 @@ impl GPUDeviceBurstArenaInner {
     assert!(self.regions[0].phsz + self.used_ext <= self.max_phsz);
     assert!(mem.size_bytes() >= bare_phsz);
     GPUDeviceTypedMem{
-      raw:  mem,
+      dptr: mem.as_mut_dptr() as *mut _,
       len:  len,
-      _m:   PhantomData,
+      _mem: mem,
+      _mrk: PhantomData,
     }
+  }
+}
+
+pub struct GPUDeviceRawAlloc;
+pub type GPUDeviceDefaultAlloc = GPUDeviceRawAlloc;
+
+impl Default for GPUDeviceRawAlloc {
+  fn default() -> Self {
+    GPUDeviceRawAlloc
+  }
+}
+
+impl<T> GPUDeviceAlloc<T> for GPUDeviceRawAlloc where T: Copy + 'static {
+  type Mem = GPUDeviceRawMem<T>;
+
+  unsafe fn alloc(&self, len: usize, conn: GPUDeviceConn) -> GPUDeviceRawMem<T> where T: Copy {
+    GPUDeviceRawMem::<T>::alloc(len, conn)
   }
 }
 

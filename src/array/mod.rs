@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-use ::{GPUDeviceConn, GPUDeviceMem, GPUDeviceRawMem};
+use ::{GPUDeviceConn, GPUDeviceAlloc, GPUDeviceMem, GPUDeviceDefaultAlloc};
 use ffi::routines_gpu::*;
 
 use arrayidx::*;
@@ -59,8 +59,9 @@ pub trait FlatViewMut: FlatView {
   fn view(self, idx: Idx) -> Self where Self: Sized;
 }*/
 
-pub trait GPUDeviceArrayZeros: Array {
+pub trait GPUDeviceArrayZeros<T>: Array where T: Copy + 'static {
   fn zeros(size: Self::Idx, conn: GPUDeviceConn) -> Self where Self: Sized;
+  fn zeros_with_alloc<Alloc>(allocator: Alloc, size: Self::Idx, conn: GPUDeviceConn) -> Self where Self: Sized, T: Copy + 'static, Alloc: GPUDeviceAlloc<T> + Sized;
   //fn zeros_with_storage(size: Self::Idx, mem: Arc<GPUDeviceMem<T>>, conn: GPUDeviceConn) -> Self where Self: Sized;
 }
 
@@ -85,8 +86,12 @@ pub type GPUDeviceArray4d<T> = GPUDeviceArray<Index4d, T>;
 pub type GPUDeviceArray5d<T> = GPUDeviceArray<Index5d, T>;
 
 impl<Idx, T> GPUDeviceArray<Idx, T> where Idx: ArrayIndex, T: Copy + 'static {
-  pub unsafe fn alloc(size: Idx, conn: GPUDeviceConn) -> Self {
-    let mem = Arc::new(unsafe { GPUDeviceRawMem::<T>::alloc(size.flat_len(), conn) });
+  pub unsafe fn alloc_default(size: Idx, conn: GPUDeviceConn) -> Self {
+    Self::alloc(GPUDeviceDefaultAlloc::default(), size, conn)
+  }
+
+  pub unsafe fn alloc<Alloc>(allocator: Alloc, size: Idx, conn: GPUDeviceConn) -> Self where Alloc: GPUDeviceAlloc<T> + Sized {
+    let mem = Arc::new(unsafe { allocator.alloc(size.flat_len(), conn) });
     GPUDeviceArray{
       size:     size.clone(),
       offset:   Idx::zero(),
@@ -97,19 +102,27 @@ impl<Idx, T> GPUDeviceArray<Idx, T> where Idx: ArrayIndex, T: Copy + 'static {
 
   pub unsafe fn alloc_shaped(size: Idx, offset: Idx, stride: Idx, conn: GPUDeviceConn) -> Self {
     let ph_flat_len = stride.outside() * size.outside();
-    let mem = Arc::new(unsafe { GPUDeviceRawMem::<T>::alloc(ph_flat_len, conn) });
+    // TODO
+    unimplemented!();
+    /*let mem = Arc::new(unsafe { GPUDeviceRawMem::<T>::alloc(ph_flat_len, conn) });
     GPUDeviceArray{
       size:     size,
       offset:   offset,
       stride:   stride,
       mem:      mem,
-    }
+    }*/
   }
 }
 
-impl<Idx, T> GPUDeviceArrayZeros for GPUDeviceArray<Idx, T> where Idx: ArrayIndex, T: ZeroBits + Copy + 'static {
+impl<Idx, T> GPUDeviceArrayZeros<T> for GPUDeviceArray<Idx, T> where Idx: ArrayIndex, T: ZeroBits + Copy + 'static {
   fn zeros(size: Idx, conn: GPUDeviceConn) -> Self {
-    let mut arr = unsafe { GPUDeviceArray::<Idx, T>::alloc(size, conn.clone()) };
+    let mut arr = unsafe { GPUDeviceArray::<Idx, T>::alloc_default(size, conn.clone()) };
+    arr.as_view_mut().set_zeros(conn);
+    arr
+  }
+
+  fn zeros_with_alloc<Alloc>(allocator: Alloc, size: Idx, conn: GPUDeviceConn) -> Self where Alloc: GPUDeviceAlloc<T> + Sized {
+    let mut arr = unsafe { GPUDeviceArray::<Idx, T>::alloc(allocator, size, conn.clone()) };
     arr.as_view_mut().set_zeros(conn);
     arr
   }
