@@ -19,6 +19,7 @@ use ffi::routines_gpu::*;
 
 use arrayidx::*;
 use cuda::runtime::*;
+use cuda_rand::{CurandGenerator};
 use memarray::*;
 use parking_lot::{Mutex};
 
@@ -513,6 +514,7 @@ pub trait GPUDeviceArrayViewMutOpsExt {
   type ViewTy;
 
   fn set_zeros(&mut self, conn: GPUDeviceConn);
+  fn fill_random(&mut self, rng: &mut CurandGenerator, conn: GPUDeviceConn);
   fn copy(&mut self, src: Self::ViewTy, conn: GPUDeviceConn);
   fn add(&mut self, x: Self::ViewTy, conn: GPUDeviceConn);
 }
@@ -527,6 +529,10 @@ impl<Idx, T> GPUDeviceArrayViewMutOpsExt for GPUDeviceArrayViewMut<Idx, T> where
 
   default fn set_zeros(&mut self, conn: GPUDeviceConn) {
     // TODO: how to gracefully handle?
+    unimplemented!();
+  }
+
+  default fn fill_random(&mut self, rng: &mut CurandGenerator, conn: GPUDeviceConn) {
     unimplemented!();
   }
 
@@ -576,6 +582,20 @@ impl<Idx, T> GPUDeviceArrayViewMutOpsExt for GPUDeviceArrayViewMut<Idx, T> where
   fn add(&mut self, x: GPUDeviceArrayView<Idx, T>, conn: GPUDeviceConn) {
     // TODO
     unimplemented!();
+  }
+}
+
+impl<Idx> GPUDeviceArrayViewMutOpsExt for GPUDeviceArrayViewMut<Idx, u32> where Idx: ArrayIndex {
+  fn fill_random(&mut self, rng: &mut CurandGenerator, conn: GPUDeviceConn) {
+    if self.is_packed() {
+      // TODO: error handling.
+      let len = self.size.flat_len();
+      let mut stream = conn.cuda_stream();
+      assert!(rng.set_stream(&mut stream).is_ok());
+      assert!(unsafe { rng.generate(self.as_mut_dptr(), len) }.is_ok());
+    } else {
+      unimplemented!();
+    }
   }
 }
 

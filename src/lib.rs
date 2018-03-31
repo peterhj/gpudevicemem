@@ -21,6 +21,7 @@ extern crate arrayidx;
 extern crate cuda;
 extern crate cuda_blas;
 extern crate cuda_dnn;
+extern crate cuda_rand;
 extern crate float;
 #[macro_use] extern crate lazy_static;
 extern crate memarray;
@@ -32,6 +33,7 @@ use ffi::routines_gpu::{KernelConfig};
 use cuda::runtime::*;
 use cuda_blas::{CublasHandle};
 use cuda_dnn::{CudnnHandle};
+use cuda_rand::{CurandGenerator};
 use parking_lot::{Mutex, MutexGuard};
 
 use std::cell::{RefCell};
@@ -130,6 +132,34 @@ impl DerefMut for LazyCudnnHandle {
   fn deref_mut(&mut self) -> &mut CudnnHandle {
     if self.h.is_none() {
       self.h = Some(CudnnHandle::create().unwrap());
+    }
+    self.h.as_mut().unwrap()
+  }
+}
+
+#[derive(Default)]
+pub struct LazyCurandGenerator {
+  h:    Option<CurandGenerator>,
+}
+
+impl LazyCurandGenerator {
+  pub fn default_shared_local() -> Rc<RefCell<Self>> {
+    Rc::new(RefCell::new(Self::default()))
+  }
+}
+
+impl Deref for LazyCurandGenerator {
+  type Target = CurandGenerator;
+
+  fn deref(&self) -> &CurandGenerator {
+    unreachable!();
+  }
+}
+
+impl DerefMut for LazyCurandGenerator {
+  fn deref_mut(&mut self) -> &mut CurandGenerator {
+    if self.h.is_none() {
+      self.h = Some(CurandGenerator::create().unwrap());
     }
     self.h.as_mut().unwrap()
   }
