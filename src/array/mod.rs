@@ -14,13 +14,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-use ::{GPUDeviceConn, GPUDeviceAlloc, GPUDeviceMem, GPUDeviceDefaultAlloc};
+use ::{GPUDeviceConn, GPUDeviceAlloc, GPUDeviceDefaultAlloc, GPUAsyncData, GPUDeviceAsyncMem, GPUDeviceMem};
 use ffi::routines_gpu::*;
 
 use arrayidx::*;
 use cuda::runtime::*;
 use memarray::*;
+use parking_lot::{Mutex};
 
+use std::mem::{size_of};
 use std::sync::{Arc};
 
 pub mod linalg;
@@ -72,10 +74,12 @@ pub trait GPUDeviceBatchArrayZeros: BatchArray {
 
 #[derive(Clone)]
 pub struct GPUDeviceArray<Idx, T> where T: Copy {
+  base:     *mut T,
   size:     Idx,
   offset:   Idx,
   stride:   Idx,
   mem:      Arc<GPUDeviceMem<T>>,
+  //mem:      Arc<Mutex<GPUDeviceMem<T>>>,
 }
 
 pub type GPUDeviceScalar<T>  = GPUDeviceArray<Index0d, T>;
@@ -91,12 +95,14 @@ impl<Idx, T> GPUDeviceArray<Idx, T> where Idx: ArrayIndex, T: Copy + 'static {
   }
 
   pub unsafe fn alloc<Alloc>(allocator: Alloc, size: Idx, conn: GPUDeviceConn) -> Self where Alloc: GPUDeviceAlloc<T> + Sized {
-    let mem = Arc::new(unsafe { allocator.alloc(size.flat_len(), conn) });
+    let mem = unsafe { allocator.alloc(size.flat_len(), conn) };
     GPUDeviceArray{
+      base:     mem.as_mut_dptr(),
       size:     size.clone(),
       offset:   Idx::zero(),
       stride:   size.to_packed_stride(),
-      mem:      mem,
+      mem:      Arc::new(mem),
+      //mem:      Arc::new(Mutex::new(mem)),
     }
   }
 
@@ -111,6 +117,12 @@ impl<Idx, T> GPUDeviceArray<Idx, T> where Idx: ArrayIndex, T: Copy + 'static {
       stride:   stride,
       mem:      mem,
     }*/
+  }
+}
+
+impl<Idx, T> GPUDeviceAsyncMem for GPUDeviceArray<Idx, T> where Idx: ArrayIndex, T: Copy {
+  fn async_data(&self) -> Arc<Mutex<GPUAsyncData>> {
+    self.mem.async_data()
   }
 }
 
@@ -151,6 +163,7 @@ impl<Idx, T> AsView for GPUDeviceArray<Idx, T> where Idx: Clone, T: Copy {
 
   fn as_view(&self) -> GPUDeviceArrayView<Idx, T> {
     GPUDeviceArrayView{
+      base:     self.base,
       size:     self.size.clone(),
       offset:   self.offset.clone(),
       stride:   self.stride.clone(),
@@ -164,6 +177,7 @@ impl<Idx, T> AsViewMut for GPUDeviceArray<Idx, T> where Idx: Clone, T: Copy {
 
   fn as_view_mut(&mut self) -> GPUDeviceArrayViewMut<Idx, T> {
     GPUDeviceArrayViewMut{
+      base:     self.base,
       size:     self.size.clone(),
       offset:   self.offset.clone(),
       stride:   self.stride.clone(),
@@ -179,6 +193,7 @@ impl<Idx, T> FlatView for GPUDeviceArray<Idx, T> where Idx: ArrayIndex, T: Copy 
     if self.is_packed() {
       let flat_size = self.size.flat_len();
       Some(GPUDeviceArrayView{
+        base:   self.base,
         size:   flat_size,
         offset: 0,
         stride: flat_size.to_packed_stride(),
@@ -197,6 +212,7 @@ impl<Idx, T> FlatViewMut for GPUDeviceArray<Idx, T> where Idx: ArrayIndex, T: Co
     if self.is_packed() {
       let flat_size = self.size.flat_len();
       Some(GPUDeviceArrayViewMut{
+        base:   self.base,
         size:   flat_size,
         offset: 0,
         stride: flat_size.to_packed_stride(),
@@ -209,12 +225,14 @@ impl<Idx, T> FlatViewMut for GPUDeviceArray<Idx, T> where Idx: ArrayIndex, T: Co
 }
 
 pub struct GPUDeviceInnerBatchArray<Idx, T> where T: Copy {
+  base:         *mut T,
   size:         Idx,
   offset:       Idx,
   stride:       Idx,
   batch_sz:     usize,
   max_batch_sz: usize,
   mem:          Arc<GPUDeviceMem<T>>,
+  //mem:          Arc<Mutex<GPUDeviceMem<T>>>,
 }
 
 pub type GPUDeviceInnerBatchScalar<T>  = GPUDeviceInnerBatchArray<Index0d, T>;
@@ -253,12 +271,14 @@ impl<Idx, T> AsView for GPUDeviceInnerBatchArray<Idx, T> where Idx: ArrayIndex, 
 }
 
 pub struct GPUDeviceOuterBatchArray<Idx, T> where T: Copy {
+  base:         *mut T,
   size:         Idx,
   offset:       Idx,
   stride:       Idx,
   batch_sz:     usize,
   max_batch_sz: usize,
   mem:          Arc<GPUDeviceMem<T>>,
+  //mem:          Arc<Mutex<GPUDeviceMem<T>>>,
 }
 
 pub type GPUDeviceOuterBatchScalar<T>  = GPUDeviceOuterBatchArray<Index0d, T>;
@@ -312,6 +332,7 @@ impl<Idx, T> AsView for GPUDeviceOuterBatchArray<Idx, T> where Idx: ArrayIndex, 
     // TODO: support for a batch stride.
     let view_stride = self.stride.stride_append_packed(self.size.outside());
     GPUDeviceArrayView{
+      base:     self.base,
       size:     view_size,
       offset:   view_offset,
       stride:   view_stride,
@@ -327,6 +348,7 @@ impl<Idx, T> FlatView for GPUDeviceOuterBatchArray<Idx, T> where Idx: ArrayIndex
     if self.is_packed() {
       let flat_size = self.size.flat_len() * self.batch_sz;
       Some(GPUDeviceArrayView{
+        base:   self.base,
         size:   flat_size,
         offset: 0,
         stride: flat_size.to_packed_stride(),
@@ -340,10 +362,12 @@ impl<Idx, T> FlatView for GPUDeviceOuterBatchArray<Idx, T> where Idx: ArrayIndex
 
 #[derive(Clone)]
 pub struct GPUDeviceArrayView<Idx, T> where T: Copy {
+  base:     *mut T,
   size:     Idx,
   offset:   Idx,
   stride:   Idx,
   mem:      Arc<GPUDeviceMem<T>>,
+  //mem:      Arc<Mutex<GPUDeviceMem<T>>>,
 }
 
 pub type GPUDeviceScalarView<T>  = GPUDeviceArrayView<Index0d, T>;
@@ -353,9 +377,15 @@ pub type GPUDeviceArrayView3d<T> = GPUDeviceArrayView<Index3d, T>;
 pub type GPUDeviceArrayView4d<T> = GPUDeviceArrayView<Index4d, T>;
 pub type GPUDeviceArrayView5d<T> = GPUDeviceArrayView<Index5d, T>;
 
+impl<Idx, T> GPUDeviceAsyncMem for GPUDeviceArrayView<Idx, T> where Idx: ArrayIndex, T: Copy {
+  fn async_data(&self) -> Arc<Mutex<GPUAsyncData>> {
+    self.mem.async_data()
+  }
+}
+
 impl<Idx, T> GPUDeviceArrayView<Idx, T> where Idx: ArrayIndex, T: Copy {
   pub unsafe fn as_dptr(&self) -> *const T {
-    self.mem.as_dptr().offset(self.flat_offset() as _)
+    self.base.offset(self.flat_offset() as _)
   }
 }
 
@@ -405,10 +435,12 @@ impl<Idx, T> GPUDeviceArrayView<Idx, T> where Idx: ArrayIndex, T: Copy {
 
 #[derive(Clone)]
 pub struct GPUDeviceArrayViewMut<Idx, T> where T: Copy {
+  base:     *mut T,
   size:     Idx,
   offset:   Idx,
   stride:   Idx,
   mem:      Arc<GPUDeviceMem<T>>,
+  //mem:      Arc<GPUDeviceMem<T>>,
 }
 
 pub type GPUDeviceScalarViewMut<T>  = GPUDeviceArrayViewMut<Index0d, T>;
@@ -416,6 +448,12 @@ pub type GPUDeviceArrayViewMut1d<T> = GPUDeviceArrayViewMut<Index1d, T>;
 pub type GPUDeviceArrayViewMut2d<T> = GPUDeviceArrayViewMut<Index2d, T>;
 pub type GPUDeviceArrayViewMut3d<T> = GPUDeviceArrayViewMut<Index3d, T>;
 pub type GPUDeviceArrayViewMut4d<T> = GPUDeviceArrayViewMut<Index4d, T>;
+
+impl<Idx, T> GPUDeviceAsyncMem for GPUDeviceArrayViewMut<Idx, T> where Idx: ArrayIndex, T: Copy {
+  fn async_data(&self) -> Arc<Mutex<GPUAsyncData>> {
+    self.mem.async_data()
+  }
+}
 
 impl<Idx, T> Array for GPUDeviceArrayViewMut<Idx, T> where Idx: ArrayIndex, T: Copy {
   type Idx = Idx;
@@ -463,11 +501,11 @@ impl<Idx, T> GPUDeviceArrayViewMut<Idx, T> where Idx: ArrayIndex, T: Copy {
 
 impl<Idx, T> GPUDeviceArrayViewMut<Idx, T> where Idx: ArrayIndex, T: Copy {
   pub unsafe fn as_dptr(&self) -> *const T {
-    self.mem.as_dptr().offset(self.flat_offset() as _)
+    self.base.offset(self.flat_offset() as _)
   }
 
   pub unsafe fn as_mut_dptr(&self) -> *mut T {
-    self.mem.as_mut_dptr().offset(self.flat_offset() as _)
+    self.base.offset(self.flat_offset() as _)
   }
 }
 
@@ -525,7 +563,8 @@ impl<Idx, T> GPUDeviceArrayViewMutOpsExt for GPUDeviceArrayViewMut<Idx, T> where
       let res = unsafe { cuda_memset_async(
           self.as_mut_dptr() as *mut u8,
           0,
-          self.mem.size_bytes(),
+          // TODO: need the footprint of the array w/ stride and offset.
+          self.size.outside() * self.stride.outside() * size_of::<T>(),
           &mut stream,
       ) };
       assert!(res.is_ok());

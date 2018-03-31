@@ -34,11 +34,14 @@ use cuda_blas::{CublasHandle};
 use cuda_dnn::{CudnnHandle};
 use parking_lot::{Mutex, MutexGuard};
 
+use std::cell::{RefCell};
 use std::cmp::{max};
-use std::collections::{HashMap};
+use std::collections::{HashMap, HashSet};
+use std::hash::{Hash, Hasher};
 use std::marker::{PhantomData};
 use std::mem::{size_of};
 use std::ops::{Deref, DerefMut};
+use std::rc::{Rc};
 use std::sync::{Arc};
 //use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -74,7 +77,8 @@ impl Deref for LazyCudaStream {
   type Target = CudaStream;
 
   fn deref(&self) -> &CudaStream {
-    unreachable!();
+    assert!(!self.h.is_none());
+    self.h.as_ref().unwrap()
   }
 }
 
@@ -180,6 +184,7 @@ pub struct GPUDeviceStreamPool {
   arch_sum:     GPUDeviceArchSummary,
   kernel_cfg:   KernelConfig,
   cuda_stream:  Arc<Mutex<LazyCudaStream>>,
+  cuda_s_uid:   usize,
   cublas_h:     Arc<Mutex<LazyCublasHandle>>,
   cudnn_h:      Arc<Mutex<LazyCudnnHandle>>,
   burst_arena:  GPUDeviceBurstArena,
@@ -189,9 +194,6 @@ impl GPUDeviceStreamPool {
   pub fn new(dev_id: GPUDeviceId/*, pool_size: usize*/) -> GPUDeviceStreamPool {
     let dev = dev_id.0;
     let dev_prop = CudaDevice::get_properties(dev as usize).unwrap();
-    /*println!("DEBUG: cuda: device: index: {} smp count: {}", dev, dev_prop.multiprocessor_count);
-    println!("DEBUG: cuda: device: index: {} shared mem per smp: {}", dev, dev_prop.shared_mem_per_multiprocessor);
-    println!("DEBUG: cuda: device: index: {} registers per smp: {}", dev, dev_prop.regs_per_multiprocessor);*/
     let arch_sum = GPUDeviceArchSummary{
       capability_major:     dev_prop.major as _,
       mp_count:             dev_prop.multiProcessorCount as _,
@@ -200,16 +202,18 @@ impl GPUDeviceStreamPool {
     };
     println!("DEBUG: GPUDeviceStreamPool: dev: {} arch: {:?}", dev, arch_sum);
     let kernel_cfg = KernelConfig::new(&arch_sum);
-    //let stream = Arc::new(GPUDeviceRawStream::new(dev_id));
+    let mut cuda_stream = LazyCudaStream::default();
+    let cuda_s_uid = (&mut *cuda_stream).unique_id();
     GPUDeviceStreamPool{
       dev_id:       dev_id,
       arch_sum:     arch_sum,
       kernel_cfg:   kernel_cfg,
-      cuda_stream:  Arc::new(Mutex::new(LazyCudaStream::default())),
+      cuda_stream:  Arc::new(Mutex::new(cuda_stream)),
+      cuda_s_uid:   cuda_s_uid,
       cublas_h:     Arc::new(Mutex::new(LazyCublasHandle::default())),
       cudnn_h:      Arc::new(Mutex::new(LazyCudnnHandle::default())),
       // TODO: configurable arena limit.
-      burst_arena:  GPUDeviceBurstArena::with_limit(dev_id, 3_000_000_000),
+      burst_arena:  GPUDeviceBurstArena::with_limit(dev_id, i32::max_value() as _),
     }
   }
 
@@ -221,6 +225,7 @@ impl GPUDeviceStreamPool {
       pop_dev:      GPUDeviceId(prev_dev),
       kernel_cfg:   self.kernel_cfg,
       cuda_stream:  self.cuda_stream.clone(),
+      cuda_s_uid:   self.cuda_s_uid,
       cublas_h:     self.cublas_h.clone(),
       cudnn_h:      self.cudnn_h.clone(),
       burst_arena:  self.burst_arena.clone(),
@@ -236,6 +241,7 @@ pub struct GPUDeviceConn<'a> {
   pop_dev:      GPUDeviceId,
   kernel_cfg:   KernelConfig,
   cuda_stream:  Arc<Mutex<LazyCudaStream>>,
+  cuda_s_uid:   usize,
   cublas_h:     Arc<Mutex<LazyCublasHandle>>,
   cudnn_h:      Arc<Mutex<LazyCudnnHandle>>,
   burst_arena:  GPUDeviceBurstArena,
@@ -269,6 +275,10 @@ impl<'a> GPUDeviceConn<'a> {
     self.cuda_stream.lock()
   }
 
+  pub fn cuda_stream_uid(&self) -> usize {
+    self.cuda_s_uid
+  }
+
   pub fn cublas(&self) -> MutexGuard<LazyCublasHandle> {
     self.cublas_h.lock()
   }
@@ -295,28 +305,155 @@ impl<'a> GPUDeviceConn<'a> {
   }
 }
 
-pub struct GPUAsyncSection {
-  event:    Arc<CudaEvent>,
+thread_local! {
+  static SECTION_STACK: RefCell<Vec<Rc<RefCell<SectionState>>>> = RefCell::new(Vec::new());
 }
 
-impl GPUAsyncSection {
-  pub fn enter(&self) {
-    // TODO
+struct ArcKey<T: ?Sized>(pub Arc<T>);
+
+impl<T: ?Sized> PartialEq for ArcKey<T> {
+  fn eq(&self, other: &Self) -> bool {
+    Arc::ptr_eq(&self.0, &other.0)
   }
 }
 
-pub struct GPUAsyncSectionGuard {
+impl<T: ?Sized> Eq for ArcKey<T> {}
+
+impl<T: ?Sized> Hash for ArcKey<T> {
+  fn hash<H>(&self, state: &mut H) where H: Hasher {
+    let ptr: *const T = &*self.0;
+    ptr.hash(state);
+  }
 }
 
-pub trait GPUDeviceMem<T> where T: Copy {
+#[derive(Default)]
+struct SectionState {
+  wait_keys:    HashSet<(usize, usize)>,
+  reg_data:     HashSet<ArcKey<Mutex<GPUAsyncData>>>,
+}
+
+impl SectionState {
+  pub fn wait_ticket(&mut self, ticket: Ticket, conn: GPUDeviceConn) {
+    let key = (ticket.e_uid, ticket.s_uid);
+    if !self.wait_keys.contains(&key) {
+      if conn.cuda_stream_uid() != ticket.s_uid {
+        assert!(conn.cuda_stream().wait_event(&mut *ticket.event.lock()).is_ok());
+      }
+      self.wait_keys.insert(key);
+    }
+  }
+
+  pub fn register(&mut self, data: Arc<Mutex<GPUAsyncData>>) {
+    self.reg_data.insert(ArcKey(data));
+  }
+}
+
+#[derive(Clone)]
+pub struct Ticket {
+  event:    Arc<Mutex<CudaEvent>>,
+  //stream:   Arc<Mutex<CudaStream>>,
+  e_uid:    usize,
+  s_uid:    usize,
+}
+
+#[derive(Clone)]
+pub struct GPUAsyncSection {
+  dev:      GPUDeviceId,
+  event:    Arc<Mutex<CudaEvent>>,
+}
+
+impl GPUAsyncSection {
+  pub fn new(conn: GPUDeviceConn) -> Self {
+    let dev = conn.device();
+    let event = CudaEvent::create_fastest().unwrap();
+    GPUAsyncSection{
+      dev:      dev,
+      event:    Arc::new(Mutex::new(event)),
+    }
+  }
+
+  pub fn enter<'a>(&'a self, conn: GPUDeviceConn<'a>) -> GPUAsyncSectionGuard<'a> {
+    //println!("DEBUG: GPUAsyncSection::enter()");
+    assert_eq!(self.dev, conn.device());
+    let evcopy = self.event.clone();
+    GPUAsyncSectionGuard{
+      event:    self.event.lock(),
+      conn:     conn,
+      evcopy:   evcopy,
+      state:    SectionState::default(),
+    }
+  }
+}
+
+pub struct GPUAsyncSectionGuard<'a> {
+  event:    MutexGuard<'a, CudaEvent>,
+  conn:     GPUDeviceConn<'a>,
+  evcopy:   Arc<Mutex<CudaEvent>>,
+  state:    SectionState,
+}
+
+impl<'a> Drop for GPUAsyncSectionGuard<'a> {
+  fn drop(&mut self) {
+    // Create a ticket from an event recording.
+    let (e_uid, s_uid) = {
+      let mut stream = self.conn.cuda_stream();
+      assert!(self.event.record(&mut *stream).is_ok());
+      (self.event.unique_id(), stream.unique_id())
+    };
+    let ticket = Ticket{
+      event:    self.evcopy.clone(),
+      e_uid:    e_uid,
+      s_uid:    s_uid,
+    };
+
+    // Post ticket to each registered data.
+    for data in self.state.reg_data.drain() {
+      let old_tick = data.0.lock().put_ticket(ticket.clone());
+      assert!(old_tick.is_none());
+    }
+  }
+}
+
+impl<'a> GPUAsyncSectionGuard<'a> {
+  // TODO: this is a stopgap API, it should be replaced by access to a
+  // thread-local stack of section guard states.
+  pub fn _wait(&mut self, data: Arc<Mutex<GPUAsyncData>>, /*conn: GPUDeviceConn*/) {
+    // If the data has a ticket, wait on it.
+    if let Some(ticket) = data.lock().take_ticket() {
+      self.state.wait_ticket(ticket, self.conn.clone());
+    }
+
+    // Register the data for a future post.
+    self.state.register(data);
+  }
+}
+
+#[derive(Default)]
+pub struct GPUAsyncData {
+  tick: Option<Ticket>,
+}
+
+impl GPUAsyncData {
+  pub fn put_ticket(&mut self, ticket: Ticket) -> Option<Ticket> {
+    let prev_tick = self.tick.take();
+    self.tick = Some(ticket);
+    prev_tick
+  }
+
+  pub fn take_ticket(&mut self) -> Option<Ticket> {
+    self.tick.take()
+  }
+}
+
+pub trait GPUDeviceAsyncMem {
+  fn async_data(&self) -> Arc<Mutex<GPUAsyncData>>;
+}
+
+pub trait GPUDeviceMem<T>: GPUDeviceAsyncMem where T: Copy {
   fn as_dptr(&self) -> *const T;
   fn as_mut_dptr(&self) -> *mut T;
   fn len(&self) -> usize;
   fn size_bytes(&self) -> usize;
-
-  // TODO
-  fn async_wait(&self, _conn: GPUDeviceConn) { unimplemented!(); }
-  fn async_post(&self, _section: Arc<GPUAsyncSection>, _conn: GPUDeviceConn) { unimplemented!(); }
 }
 
 pub trait GPUDeviceAlloc<T> where T: Copy + 'static {
@@ -330,6 +467,12 @@ pub struct GPUDeviceTypedMem<T> where T: Copy {
   len:  usize,
   _mem: Arc<GPUDeviceMem<u8>>,
   _mrk: PhantomData<T>,
+}
+
+impl<T> GPUDeviceAsyncMem for GPUDeviceTypedMem<T> where T: Copy {
+  fn async_data(&self) -> Arc<Mutex<GPUAsyncData>> {
+    self._mem.async_data()
+  }
 }
 
 impl<T> GPUDeviceMem<T> for GPUDeviceTypedMem<T> where T: Copy {
@@ -355,6 +498,12 @@ pub struct GPUDeviceRegionSliceMem {
   dptr: *mut u8,
   phsz: usize,
   _mem: Arc<GPUDeviceRegionRawMem>,
+}
+
+impl GPUDeviceAsyncMem for GPUDeviceRegionSliceMem {
+  fn async_data(&self) -> Arc<Mutex<GPUAsyncData>> {
+    self._mem.async_data()
+  }
 }
 
 impl GPUDeviceMem<u8> for GPUDeviceRegionSliceMem {
@@ -391,6 +540,13 @@ impl Drop for GPUDeviceRegionRawMem {
       Ok(_) => {}
     }
     CudaDevice::set_current(pop_dev).unwrap();
+  }
+}
+
+impl GPUDeviceAsyncMem for GPUDeviceRegionRawMem {
+  fn async_data(&self) -> Arc<Mutex<GPUAsyncData>> {
+    // TODO
+    unimplemented!();
   }
 }
 
@@ -587,11 +743,13 @@ pub struct GPUDeviceRawMem<T> where T: Copy {
   dptr: *mut T,
   len:  usize,
   phsz: usize,
+  asd:  Arc<Mutex<GPUAsyncData>>,
 }
 
 impl<T> Drop for GPUDeviceRawMem<T> where T: Copy {
   fn drop(&mut self) {
     let pop_dev = CudaDevice::get_current().unwrap();
+    // TODO: need to synchronize on the ticket if one exists.
     //CudaDevice::synchronize().unwrap();
     CudaDevice::set_current(self.dev.0).unwrap();
     match unsafe { cuda_free_device::<T>(self.dptr) } {
@@ -617,7 +775,14 @@ impl<T> GPUDeviceRawMem<T> where T: Copy {
       dptr: dptr,
       len:  len,
       phsz: len * size_of::<T>(),
+      asd:  Arc::new(Mutex::new(GPUAsyncData::default())),
     }
+  }
+}
+
+impl<T> GPUDeviceAsyncMem for GPUDeviceRawMem<T> where T: Copy {
+  fn async_data(&self) -> Arc<Mutex<GPUAsyncData>> {
+    self.asd.clone()
   }
 }
 
