@@ -36,7 +36,7 @@ use parking_lot::{Mutex, MutexGuard};
 
 use std::cell::{RefCell};
 use std::cmp::{max};
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashSet};
 use std::hash::{Hash, Hasher};
 use std::marker::{PhantomData};
 use std::mem::{size_of};
@@ -354,6 +354,41 @@ pub struct Ticket {
   //stream:   Arc<Mutex<CudaStream>>,
   e_uid:    usize,
   s_uid:    usize,
+}
+
+pub struct GPULazyAsyncSection {
+  shared:   Rc<RefCell<Option<GPUAsyncSection>>>,
+  cached:   Option<GPUAsyncSection>,
+}
+
+impl Default for GPULazyAsyncSection {
+  fn default() -> Self {
+    GPULazyAsyncSection{
+      shared:   Rc::new(RefCell::new(None)),
+      cached:   None,
+    }
+  }
+}
+
+impl Clone for GPULazyAsyncSection {
+  fn clone(&self) -> Self {
+    GPULazyAsyncSection{
+      shared:   self.shared.clone(),
+      cached:   None,
+    }
+  }
+}
+
+impl GPULazyAsyncSection {
+  pub fn enter<'a>(&'a mut self, conn: GPUDeviceConn<'a>) -> GPUAsyncSectionGuard<'a> {
+    if self.shared.borrow().is_none() {
+      *self.shared.borrow_mut() = Some(GPUAsyncSection::new(conn.clone()));
+    }
+    if self.cached.is_none() {
+      self.cached = self.shared.borrow().clone();
+    }
+    self.cached.as_ref().unwrap().enter(conn)
+  }
 }
 
 #[derive(Clone)]

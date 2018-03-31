@@ -22,7 +22,7 @@ use float::stub::*;
 
 use std::collections::{HashMap};
 use std::mem::{uninitialized};
-use std::ptr::{null, null_mut};
+//use std::ptr::{null, null_mut};
 use std::sync::{Arc, Mutex};
 
 lazy_static! {
