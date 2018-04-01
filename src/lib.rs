@@ -165,41 +165,6 @@ impl DerefMut for LazyCurandGenerator {
   }
 }
 
-/*pub struct GPUDeviceRawStream {
-  dev_id:       GPUDeviceId,
-  cuda_stream:  Arc<Mutex<LazyCudaStream>>,
-  //sync_event:   Arc<CudaEvent>,
-}
-
-impl GPUDeviceRawStream {
-  pub fn new(dev_id: GPUDeviceId) -> Self {
-    //let prev_dev = CudaDevice::get_current().unwrap();
-    //CudaDevice::set_current(dev_id.0).unwrap();
-    //let cuda_stream = Arc::new(CudaStream::create().unwrap());
-    //let sync_event = Arc::new(CudaEvent::create_fastest().unwrap());
-    //CudaDevice::set_current(prev_dev).unwrap();
-    let lazy_stream = LazyCudaStream::default();
-    let cuda_stream = Arc::new(Mutex::new(lazy_stream));
-    GPUDeviceRawStream{
-      dev_id:       dev_id,
-      cuda_stream:  cuda_stream,
-      //sync_event:   sync_event,
-    }
-  }
-
-  pub fn cuda_stream(&self) -> MutexGuard<LazyCudaStream> {
-    self.cuda_stream.lock()
-  }
-
-  /*pub fn sync_event(&self) -> Arc<CudaEvent> {
-    self.sync_event.clone()
-  }
-
-  pub fn wait_on_event(&self, event: &CudaEvent) {
-    self.cuda_stream.wait_event(event).unwrap();
-  }*/
-}*/
-
 #[derive(Clone, Copy, Debug)]
 pub struct GPUDeviceArchSummary {
   pub capability_major:     usize,
@@ -213,8 +178,8 @@ pub struct GPUDeviceStreamPool {
   dev_id:       GPUDeviceId,
   arch_sum:     GPUDeviceArchSummary,
   kernel_cfg:   KernelConfig,
-  cuda_stream:  Arc<Mutex<LazyCudaStream>>,
   cuda_s_uid:   usize,
+  cuda_stream:  Arc<Mutex<LazyCudaStream>>,
   cublas_h:     Arc<Mutex<LazyCublasHandle>>,
   cudnn_h:      Arc<Mutex<LazyCudnnHandle>>,
   burst_arena:  GPUDeviceBurstArena,
@@ -238,8 +203,8 @@ impl GPUDeviceStreamPool {
       dev_id:       dev_id,
       arch_sum:     arch_sum,
       kernel_cfg:   kernel_cfg,
-      cuda_stream:  Arc::new(Mutex::new(cuda_stream)),
       cuda_s_uid:   cuda_s_uid,
+      cuda_stream:  Arc::new(Mutex::new(cuda_stream)),
       cublas_h:     Arc::new(Mutex::new(LazyCublasHandle::default())),
       cudnn_h:      Arc::new(Mutex::new(LazyCudnnHandle::default())),
       // TODO: configurable arena limit.
@@ -254,8 +219,8 @@ impl GPUDeviceStreamPool {
       dev:          self.dev_id,
       pop_dev:      GPUDeviceId(prev_dev),
       kernel_cfg:   self.kernel_cfg,
-      cuda_stream:  self.cuda_stream.clone(),
       cuda_s_uid:   self.cuda_s_uid,
+      cuda_stream:  self.cuda_stream.clone(),
       cublas_h:     self.cublas_h.clone(),
       cudnn_h:      self.cudnn_h.clone(),
       burst_arena:  self.burst_arena.clone(),
@@ -270,8 +235,8 @@ pub struct GPUDeviceConn<'a> {
   dev:          GPUDeviceId,
   pop_dev:      GPUDeviceId,
   kernel_cfg:   KernelConfig,
-  cuda_stream:  Arc<Mutex<LazyCudaStream>>,
   cuda_s_uid:   usize,
+  cuda_stream:  Arc<Mutex<LazyCudaStream>>,
   cublas_h:     Arc<Mutex<LazyCublasHandle>>,
   cudnn_h:      Arc<Mutex<LazyCudnnHandle>>,
   burst_arena:  GPUDeviceBurstArena,
@@ -534,6 +499,9 @@ pub struct GPUDeviceTypedMem<T> where T: Copy {
   _mrk: PhantomData<T>,
 }
 
+unsafe impl<T> Send for GPUDeviceTypedMem<T> where T: Copy {}
+unsafe impl<T> Sync for GPUDeviceTypedMem<T> where T: Copy {}
+
 impl<T> GPUDeviceAsyncMem for GPUDeviceTypedMem<T> where T: Copy {
   fn async_data(&self) -> Arc<Mutex<GPUAsyncData>> {
     self._mem.async_data()
@@ -565,6 +533,9 @@ pub struct GPUDeviceRegionSliceMem {
   _mem: Arc<GPUDeviceRegionRawMem>,
 }
 
+unsafe impl Send for GPUDeviceRegionSliceMem {}
+unsafe impl Sync for GPUDeviceRegionSliceMem {}
+
 impl GPUDeviceAsyncMem for GPUDeviceRegionSliceMem {
   fn async_data(&self) -> Arc<Mutex<GPUAsyncData>> {
     self._mem.async_data()
@@ -594,6 +565,9 @@ pub struct GPUDeviceRegionRawMem {
   dptr: *mut u8,
   phsz: usize,
 }
+
+unsafe impl Send for GPUDeviceRegionRawMem {}
+unsafe impl Sync for GPUDeviceRegionRawMem {}
 
 impl Drop for GPUDeviceRegionRawMem {
   fn drop(&mut self) {
@@ -810,6 +784,9 @@ pub struct GPUDeviceRawMem<T> where T: Copy {
   phsz: usize,
   asd:  Arc<Mutex<GPUAsyncData>>,
 }
+
+unsafe impl<T> Send for GPUDeviceRawMem<T> where T: Copy {}
+unsafe impl<T> Sync for GPUDeviceRawMem<T> where T: Copy {}
 
 impl<T> Drop for GPUDeviceRawMem<T> where T: Copy {
   fn drop(&mut self) {
