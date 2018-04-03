@@ -343,6 +343,24 @@ impl<Idx, T> AsView for GPUDeviceOuterBatchArray<Idx, T> where Idx: ArrayIndex, 
   }
 }
 
+impl<Idx, T> AsViewMut for GPUDeviceOuterBatchArray<Idx, T> where Idx: ArrayIndex, T: Copy {
+  type ViewMutTy = GPUDeviceArrayViewMut<Idx::Above, T>;
+
+  fn as_view_mut(&mut self) -> GPUDeviceArrayViewMut<Idx::Above, T> {
+    let view_size = self.size.append(self.batch_sz);
+    let view_offset = self.offset.append(0);
+    // TODO: support for a batch stride.
+    let view_stride = self.stride.stride_append_packed(self.size.outside());
+    GPUDeviceArrayViewMut{
+      base:     self.base,
+      size:     view_size,
+      offset:   view_offset,
+      stride:   view_stride,
+      mem:      self.mem.clone(),
+    }
+  }
+}
+
 impl<Idx, T> FlatView for GPUDeviceOuterBatchArray<Idx, T> where Idx: ArrayIndex, T: Copy {
   type FlatViewTy = GPUDeviceArrayView1d<T>;
 
