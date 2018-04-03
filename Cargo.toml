@@ -15,8 +15,8 @@ walkdir = "*"
 [dependencies]
 arrayidx = { path = "../arrayidx" }
 cuda = { path = "../libcuda" }
-cuda_blas = { path = "../libcuda_blas" }
-cuda_dnn = { path = "../libcuda_dnn" }
+cuda_blas = { path = "../cuda_blas" }
+cuda_dnn = { path = "../cuda_dnn" }
 cuda_rand = { path = "../cuda_rand" }
 float = { path = "../libfloat" }
 lazy_static = "*"

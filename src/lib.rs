@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+#![feature(collections_range)]
 #![feature(specialization)]
 //#![feature(trait_alias)]
 
@@ -216,8 +217,8 @@ impl GPUDeviceStreamPool {
     let prev_dev = CudaDevice::get_current().unwrap();
     CudaDevice::set_current(self.dev_id.0).unwrap();
     GPUDeviceConn{
+      pop:          Rc::new(PopConn{pop_dev: GPUDeviceId(prev_dev)}),
       dev:          self.dev_id,
-      pop_dev:      GPUDeviceId(prev_dev),
       kernel_cfg:   self.kernel_cfg,
       cuda_s_uid:   self.cuda_s_uid,
       cuda_stream:  self.cuda_stream.clone(),
@@ -229,11 +230,21 @@ impl GPUDeviceStreamPool {
   }
 }
 
+struct PopConn {
+  pop_dev:  GPUDeviceId,
+}
+
+impl Drop for PopConn {
+  fn drop(&mut self) {
+    CudaDevice::set_current(self.pop_dev.0).unwrap();
+  }
+}
+
 #[must_use]
 #[derive(Clone)]
 pub struct GPUDeviceConn<'a> {
+  pop:          Rc<PopConn>,
   dev:          GPUDeviceId,
-  pop_dev:      GPUDeviceId,
   kernel_cfg:   KernelConfig,
   cuda_s_uid:   usize,
   cuda_stream:  Arc<Mutex<LazyCudaStream>>,
@@ -241,12 +252,6 @@ pub struct GPUDeviceConn<'a> {
   cudnn_h:      Arc<Mutex<LazyCudnnHandle>>,
   burst_arena:  GPUDeviceBurstArena,
   borrow:       &'a (),
-}
-
-impl<'a> Drop for GPUDeviceConn<'a> {
-  fn drop(&mut self) {
-    CudaDevice::set_current(self.pop_dev.0).unwrap();
-  }
 }
 
 impl<'a> GPUDeviceConn<'a> {

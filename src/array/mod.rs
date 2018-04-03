@@ -23,6 +23,7 @@ use cuda_rand::{CurandGenerator};
 use memarray::*;
 use parking_lot::{Mutex};
 
+use std::collections::range::{RangeArgument};
 use std::mem::{size_of};
 use std::sync::{Arc};
 
@@ -408,6 +409,23 @@ impl<Idx, T> DenseArray for GPUDeviceArrayView<Idx, T> where Idx: ArrayIndex, T:
   }
 }
 
+impl<T> GPUDeviceArrayView1d<T> where T: Copy {
+  pub fn view<R>(self, r: R) -> GPUDeviceArrayView1d<T>
+  where R: RangeArgument<usize>,
+  {
+    let (start_idx, end_idx) = range2idxs_1d(r, self.size);
+    let view_size = end_idx - start_idx;
+    let view_offset = self.offset + start_idx;
+    GPUDeviceArrayView{
+      base:     self.base,
+      size:     view_size,
+      offset:   view_offset,
+      stride:   self.stride,
+      mem:      self.mem.clone(),
+    }
+  }
+}
+
 impl<Idx, T> GPUDeviceArrayView<Idx, T> where Idx: ArrayIndex, T: Copy {
   pub fn dump_mem(&self, dst: MemArrayViewMut<Idx, T>, conn: GPUDeviceConn) {
     assert_eq!(self.size, dst.size());
@@ -471,6 +489,23 @@ impl<Idx, T> DenseArray for GPUDeviceArrayViewMut<Idx, T> where Idx: ArrayIndex,
 
   fn stride(&self) -> Idx {
     self.stride.clone()
+  }
+}
+
+impl<T> GPUDeviceArrayViewMut1d<T> where T: Copy {
+  pub fn view_mut<R>(self, r: R) -> GPUDeviceArrayViewMut1d<T>
+  where R: RangeArgument<usize>,
+  {
+    let (start_idx, end_idx) = range2idxs_1d(r, self.size);
+    let view_size = end_idx - start_idx;
+    let view_offset = self.offset + start_idx;
+    GPUDeviceArrayViewMut{
+      base:     self.base,
+      size:     view_size,
+      offset:   view_offset,
+      stride:   self.stride,
+      mem:      self.mem.clone(),
+    }
   }
 }
 
