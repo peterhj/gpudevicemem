@@ -213,7 +213,7 @@ impl GPUDeviceStreamPool {
     }
   }
 
-  pub fn conn<'a>(&'a self) -> GPUDeviceConn<'a> {
+  pub fn conn<'a>(&'a mut self) -> GPUDeviceConn<'a> {
     let prev_dev = CudaDevice::get_current().unwrap();
     CudaDevice::set_current(self.dev_id.0).unwrap();
     GPUDeviceConn{
