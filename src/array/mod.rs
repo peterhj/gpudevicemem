@@ -445,7 +445,7 @@ impl<T> GPUDeviceArrayView1d<T> where T: Copy {
 }
 
 impl<Idx, T> GPUDeviceArrayView<Idx, T> where Idx: ArrayIndex, T: Copy {
-  pub fn dump_mem(&self, dst: MemArrayViewMut<Idx, T>, conn: GPUDeviceConn) {
+  pub fn sync_dump_mem(&self, dst: MemArrayViewMut<Idx, T>, conn: GPUDeviceConn) {
     assert_eq!(self.size, dst.size());
     if self.is_packed() && dst.is_packed() {
       let len = self.size.flat_len();
@@ -528,7 +528,7 @@ impl<T> GPUDeviceArrayViewMut1d<T> where T: Copy {
 }
 
 impl<Idx, T> GPUDeviceArrayViewMut<Idx, T> where Idx: ArrayIndex, T: Copy {
-  pub fn copy_mem(&mut self, src: MemArrayView<Idx, T>, conn: GPUDeviceConn) {
+  pub fn sync_copy_mem(&mut self, src: MemArrayView<Idx, T>, conn: GPUDeviceConn) {
     assert_eq!(self.size, src.size());
     if self.is_packed() && src.is_packed() {
       let len = self.size.flat_len();
