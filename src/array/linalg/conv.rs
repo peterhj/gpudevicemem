@@ -17,15 +17,13 @@ limitations under the License.
 use ::{GPUDeviceId, GPUDeviceConn};
 use ::array::*;
 
-use cuda_blas::*;
-use cuda_blas::ffi::*;
 use cuda_dnn::*;
 use cuda_dnn::ffi::*;
 use float::stub::*;
 
 use std::collections::{HashMap};
 use std::mem::{uninitialized};
-use std::ptr::{null, null_mut};
+//use std::ptr::{null, null_mut};
 use std::sync::{Arc, Mutex};
 
 lazy_static! {
