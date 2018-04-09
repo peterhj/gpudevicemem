@@ -25,10 +25,16 @@ impl GPUVectorOps<f32> for GPUDeviceArrayViewMut1d<f32> {
       x: GPUDeviceArrayView1d<f32>,
       conn: GPUDeviceConn)
   {
-    // TODO: check sizes.
+    let mut stream = conn.cuda_stream();
+    let mut cublas_h = conn.cublas();
+    assert!(cublas_h.set_stream(&mut stream).is_ok());
+    assert!(cublas_h.set_pointer_mode(CublasPointerMode::Host).is_ok());
+    assert!(cublas_h.set_atomics_mode(CublasAtomicsMode::NotAllowed).is_ok());
+    assert_eq!(w.size()[0], self.size());
+    assert_eq!(w.size()[1], x.size());
     let alpha: f32 = 1.0;
     let beta: f32 = 0.0;
-    let status = unsafe { conn.cublas().gemv(
+    let status = unsafe { cublas_h.gemv(
         CublasTranspose::N,
         sz2int(w.size()[0]),
         sz2int(w.size()[1]),
@@ -42,7 +48,7 @@ impl GPUVectorOps<f32> for GPUDeviceArrayViewMut1d<f32> {
   }
 }
 
-fn gpu_matrix_vector_mult<T>(
+pub fn gpu_matrix_vector_mult<T>(
     w: GPUDeviceArrayView2d<T>,
     x: GPUDeviceArrayView1d<T>,
     mut y: GPUDeviceArrayViewMut1d<T>,
@@ -74,10 +80,17 @@ impl GPUMatrixOps<f32> for GPUDeviceArrayViewMut2d<f32> {
       x: GPUDeviceArrayView2d<f32>,
       conn: GPUDeviceConn)
   {
-    // TODO: check sizes.
+    let mut stream = conn.cuda_stream();
+    let mut cublas_h = conn.cublas();
+    assert!(cublas_h.set_stream(&mut stream).is_ok());
+    assert!(cublas_h.set_pointer_mode(CublasPointerMode::Host).is_ok());
+    assert!(cublas_h.set_atomics_mode(CublasAtomicsMode::NotAllowed).is_ok());
+    assert_eq!(w.size()[0], self.size()[0]);
+    assert_eq!(w.size()[1], x.size()[0]);
+    assert_eq!(x.size()[1], self.size()[1]);
     let alpha: f32 = 1.0;
     let beta: f32 = 0.0;
-    let status = unsafe { conn.cublas().gemm(
+    let status = unsafe { cublas_h.gemm(
         CublasTranspose::N,
         CublasTranspose::N,
         sz2int(w.size()[0]),
@@ -97,10 +110,17 @@ impl GPUMatrixOps<f32> for GPUDeviceArrayViewMut2d<f32> {
       y: GPUDeviceArrayView2d<f32>,
       conn: GPUDeviceConn)
   {
-    // TODO: check sizes.
+    let mut stream = conn.cuda_stream();
+    let mut cublas_h = conn.cublas();
+    assert!(cublas_h.set_stream(&mut stream).is_ok());
+    assert!(cublas_h.set_pointer_mode(CublasPointerMode::Host).is_ok());
+    assert!(cublas_h.set_atomics_mode(CublasAtomicsMode::NotAllowed).is_ok());
+    assert_eq!(w.size()[1], self.size()[0]);
+    assert_eq!(w.size()[0], y.size()[0]);
+    assert_eq!(y.size()[1], self.size()[1]);
     let alpha: f32 = 1.0;
     let beta: f32 = 0.0;
-    let status = unsafe { conn.cublas().gemm(
+    let status = unsafe { cublas_h.gemm(
         CublasTranspose::T,
         CublasTranspose::N,
         sz2int(w.size()[1]),
@@ -120,10 +140,17 @@ impl GPUMatrixOps<f32> for GPUDeviceArrayViewMut2d<f32> {
       x: GPUDeviceArrayView2d<f32>,
       conn: GPUDeviceConn)
   {
-    // TODO: check sizes.
+    let mut stream = conn.cuda_stream();
+    let mut cublas_h = conn.cublas();
+    assert!(cublas_h.set_stream(&mut stream).is_ok());
+    assert!(cublas_h.set_pointer_mode(CublasPointerMode::Host).is_ok());
+    assert!(cublas_h.set_atomics_mode(CublasAtomicsMode::NotAllowed).is_ok());
+    assert_eq!(y.size()[0], self.size()[0]);
+    assert_eq!(y.size()[1], x.size()[1]);
+    assert_eq!(x.size()[0], self.size()[1]);
     let alpha: f32 = 1.0;
     let beta: f32 = 0.0;
-    let status = unsafe { conn.cublas().gemm(
+    let status = unsafe { cublas_h.gemm(
         CublasTranspose::N,
         CublasTranspose::T,
         sz2int(y.size()[0]),
@@ -139,7 +166,7 @@ impl GPUMatrixOps<f32> for GPUDeviceArrayViewMut2d<f32> {
   }
 }
 
-fn gpu_matrix_mult<T>(
+pub fn gpu_matrix_mult<T>(
     w: GPUDeviceArrayView2d<T>,
     x: GPUDeviceArrayView2d<T>,
     mut y: GPUDeviceArrayViewMut2d<T>,
@@ -150,7 +177,7 @@ where T: Copy,
   y.matrix_mult(w, x, conn);
 }
 
-fn gpu_left_transpose_matrix_mult<T>(
+pub fn gpu_left_transpose_matrix_mult<T>(
     w: GPUDeviceArrayView2d<T>,
     y: GPUDeviceArrayView2d<T>,
     mut x: GPUDeviceArrayViewMut2d<T>,
@@ -161,7 +188,7 @@ where T: Copy,
   x.left_transpose_matrix_mult(w, y, conn);
 }
 
-fn gpu_right_transpose_matrix_mult<T>(
+pub fn gpu_right_transpose_matrix_mult<T>(
     y: GPUDeviceArrayView2d<T>,
     x: GPUDeviceArrayView2d<T>,
     mut w: GPUDeviceArrayViewMut2d<T>,
