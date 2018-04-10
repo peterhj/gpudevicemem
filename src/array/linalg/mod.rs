@@ -32,6 +32,7 @@ impl GPUVectorOps<f32> for GPUDeviceArrayViewMut1d<f32> {
     assert!(cublas_h.set_math_mode(CublasMathMode::Default).is_ok());
     assert_eq!(w.size()[0], self.size());
     assert_eq!(w.size()[1], x.size());
+    assert_eq!(w.stride()[0], 1);
     let alpha: f32 = 1.0;
     let beta: f32 = 0.0;
     let status = unsafe { cublas_h.gemv(
@@ -89,6 +90,9 @@ impl GPUMatrixOps<f32> for GPUDeviceArrayViewMut2d<f32> {
     assert_eq!(w.size()[0], self.size()[0]);
     assert_eq!(w.size()[1], x.size()[0]);
     assert_eq!(x.size()[1], self.size()[1]);
+    assert_eq!(w.stride()[0], 1);
+    assert_eq!(x.stride()[0], 1);
+    assert_eq!(self.stride()[0], 1);
     let alpha: f32 = 1.0;
     let beta: f32 = 0.0;
     let status = unsafe { cublas_h.gemm(
@@ -120,6 +124,9 @@ impl GPUMatrixOps<f32> for GPUDeviceArrayViewMut2d<f32> {
     assert_eq!(w.size()[1], self.size()[0]);
     assert_eq!(w.size()[0], y.size()[0]);
     assert_eq!(y.size()[1], self.size()[1]);
+    assert_eq!(w.stride()[0], 1);
+    assert_eq!(y.stride()[0], 1);
+    assert_eq!(self.stride()[0], 1);
     let alpha: f32 = 1.0;
     let beta: f32 = 0.0;
     let status = unsafe { cublas_h.gemm(
@@ -151,6 +158,9 @@ impl GPUMatrixOps<f32> for GPUDeviceArrayViewMut2d<f32> {
     assert_eq!(y.size()[0], self.size()[0]);
     assert_eq!(y.size()[1], x.size()[1]);
     assert_eq!(x.size()[0], self.size()[1]);
+    assert_eq!(y.stride()[0], 1);
+    assert_eq!(x.stride()[0], 1);
+    assert_eq!(self.stride()[0], 1);
     let alpha: f32 = 1.0;
     let beta: f32 = 0.0;
     let status = unsafe { cublas_h.gemm(

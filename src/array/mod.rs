@@ -252,6 +252,10 @@ impl<Idx, T> Array for GPUDeviceInnerBatchArray<Idx, T> where Idx: ArrayIndex, T
 }
 
 impl<Idx, T> BatchArray for GPUDeviceInnerBatchArray<Idx, T> where Idx: ArrayIndex, T: Copy {
+  fn batch_capacity(&self) -> usize {
+    self.max_batch_sz
+  }
+
   fn batch_size(&self) -> usize {
     self.batch_sz
   }
@@ -315,6 +319,10 @@ impl<Idx, T> DenseArray for GPUDeviceOuterBatchArray<Idx, T> where Idx: ArrayInd
 }
 
 impl<Idx, T> BatchArray for GPUDeviceOuterBatchArray<Idx, T> where Idx: ArrayIndex, T: Copy {
+  fn batch_capacity(&self) -> usize {
+    self.max_batch_sz
+  }
+
   fn batch_size(&self) -> usize {
     self.batch_sz
   }
