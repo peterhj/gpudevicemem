@@ -18,6 +18,7 @@ limitations under the License.
 #![feature(specialization)]
 //#![feature(trait_alias)]
 
+extern crate arithmetic;
 extern crate arrayidx;
 extern crate cuda;
 extern crate cuda_blas;

@@ -13,6 +13,7 @@ cc = "*"
 walkdir = "*"
 
 [dependencies]
+arithmetic = { path = "../arithmetic" }
 arrayidx = { path = "../arrayidx" }
 cuda = { path = "../libcuda" }
 cuda_blas = { path = "../cuda_blas" }

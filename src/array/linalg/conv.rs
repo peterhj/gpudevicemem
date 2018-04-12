@@ -17,6 +17,7 @@ limitations under the License.
 use ::{GPUDeviceId, GPUDeviceConn};
 use ::array::*;
 
+use arithmetic::{PseudoField, PseudoRing};
 use cuda_dnn::*;
 use cuda_dnn::ffi::*;
 use float::stub::*;
@@ -27,13 +28,13 @@ use std::mem::{uninitialized};
 use std::sync::{Arc, Mutex};
 
 lazy_static! {
-  static ref CACHED_CONV_FWD_ALGOS: Arc<Mutex<HashMap<XGPUConvKey, XGPUConvFwdAlgo>>> = {
+  static ref CACHED_CONV_FWD_ALGOS: Arc<Mutex<HashMap<XGPUConvKey, XGPUConvFwdConfig>>> = {
     Arc::new(Mutex::new(HashMap::new()))
   };
-  static ref CACHED_CONV_BWD_W_ALGOS: Arc<Mutex<HashMap<XGPUConvKey, XGPUConvBwdWAlgo>>> = {
+  static ref CACHED_CONV_BWD_W_ALGOS: Arc<Mutex<HashMap<XGPUConvKey, XGPUConvBwdWConfig>>> = {
     Arc::new(Mutex::new(HashMap::new()))
   };
-  static ref CACHED_CONV_BWD_X_ALGOS: Arc<Mutex<HashMap<XGPUConvKey, XGPUConvBwdXAlgo>>> = {
+  static ref CACHED_CONV_BWD_X_ALGOS: Arc<Mutex<HashMap<XGPUConvKey, XGPUConvBwdXConfig>>> = {
     Arc::new(Mutex::new(HashMap::new()))
   };
 }
@@ -145,38 +146,35 @@ pub struct XConvType {
 }
 
 #[derive(Clone, Copy)]
-pub enum XGPUConvFwdAlgo {
-  Cudnn(CudnnGPUConvFwdAlgo),
+pub enum XGPUConvFwdConfig {
+  Cudnn(CudnnGPUConvFwdConfig),
 }
 
 #[derive(Clone, Copy)]
-pub struct CudnnGPUConvFwdAlgo {
-  // TODO
-  pub desc:         cudnnConvolutionFwdAlgo_t,
+pub struct CudnnGPUConvFwdConfig {
+  pub algo_desc:    cudnnConvolutionFwdAlgo_t,
   pub workspace:    usize,
 }
 
 #[derive(Clone, Copy)]
-pub enum XGPUConvBwdWAlgo {
-  Cudnn(CudnnGPUConvBwdWAlgo),
+pub enum XGPUConvBwdWConfig {
+  Cudnn(CudnnGPUConvBwdWConfig),
 }
 
 #[derive(Clone, Copy)]
-pub struct CudnnGPUConvBwdWAlgo {
-  // TODO
-  pub desc:         cudnnConvolutionBwdFilterAlgo_t,
+pub struct CudnnGPUConvBwdWConfig {
+  pub algo_desc:    cudnnConvolutionBwdFilterAlgo_t,
   pub workspace:    usize,
 }
 
 #[derive(Clone, Copy)]
-pub enum XGPUConvBwdXAlgo {
-  Cudnn(CudnnGPUConvBwdXAlgo),
+pub enum XGPUConvBwdXConfig {
+  Cudnn(CudnnGPUConvBwdXConfig),
 }
 
 #[derive(Clone, Copy)]
-pub struct CudnnGPUConvBwdXAlgo {
-  // TODO
-  pub desc:         cudnnConvolutionBwdDataAlgo_t,
+pub struct CudnnGPUConvBwdXConfig {
+  pub algo_desc:    cudnnConvolutionBwdDataAlgo_t,
   pub workspace:    usize,
 }
 
@@ -207,7 +205,7 @@ pub fn query_gpu_conv_fwd_algo<WTy, XTy, YTy>(
     maybe_math_mode: Option<GPUMathMode>,
     conv_shape: XConvFullShape,
     conn: GPUDeviceConn)
--> Option<(XGPUConvFwdAlgo, XGPUConvState<WTy, XTy, YTy>)>
+-> Option<(XGPUConvFwdConfig, XGPUConvState<WTy, XTy, YTy>)>
 where WTy: GPUDataTyped + CudnnDataTypeExt,
       XTy: GPUDataTyped + CudnnDataTypeExt,
       YTy: GPUDataTyped + CudnnDataTypeExt,
@@ -220,10 +218,10 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
     y_ty:   YTy::gpu_data_ty(),
   };
 
-  let kernel_desc = CudnnFilterDesc::<WTy>::create().unwrap();
-  let src_desc = CudnnTensorDesc::<XTy>::create().unwrap();
-  let dst_desc = CudnnTensorDesc::<YTy>::create().unwrap();
-  let conv_desc = CudnnConvDesc::create().unwrap();
+  let mut kernel_desc = CudnnFilterDesc::<WTy>::create().unwrap();
+  let mut src_desc = CudnnTensorDesc::<XTy>::create().unwrap();
+  let mut dst_desc = CudnnTensorDesc::<YTy>::create().unwrap();
+  let mut conv_desc = CudnnConvDesc::create().unwrap();
   match conv_shape {
     XConvFullShape::Conv2d(shape) => {
       // TODO: configure tensor layout.
@@ -353,8 +351,8 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
       found_k = Some(k);
       break;
     }
-    found_k.map(|k| XGPUConvFwdAlgo::Cudnn(CudnnGPUConvFwdAlgo{
-      desc:       algo_results[k].algo,
+    found_k.map(|k| XGPUConvFwdConfig::Cudnn(CudnnGPUConvFwdConfig{
+      algo_desc:  algo_results[k].algo,
       workspace:  algo_results[k].memory
     }))
   };
@@ -370,7 +368,7 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
   })))
 }
 
-pub fn query_gpu_conv_bwd_w_algo<WTy, XTy, YTy>(dev: GPUDeviceId, maybe_determinism: Option<GPUMathDeterminism>, maybe_math_mode: Option<GPUMathMode>, conv_shape: XConvFullShape, conn: GPUDeviceConn) -> Option<XGPUConvBwdWAlgo>
+pub fn query_gpu_conv_bwd_w_algo<WTy, XTy, YTy>(dev: GPUDeviceId, maybe_determinism: Option<GPUMathDeterminism>, maybe_math_mode: Option<GPUMathMode>, conv_shape: XConvFullShape, conn: GPUDeviceConn) -> Option<XGPUConvBwdWConfig>
 where WTy: GPUDataTyped + CudnnDataTypeExt,
       XTy: GPUDataTyped + CudnnDataTypeExt,
       YTy: GPUDataTyped + CudnnDataTypeExt,
@@ -382,24 +380,11 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
     x_ty:   XTy::gpu_data_ty(),
     y_ty:   YTy::gpu_data_ty(),
   };
-  //let key = (dev, determinism, math_mode, conv_shape, conv_type);
-  let key = XGPUConvKey{
-    dev, determinism, math_mode, conv_shape, conv_type,
-  };
-  {
-    let cache = CACHED_CONV_BWD_W_ALGOS.lock().unwrap();
-    if let Some(algo) = cache.get(&key) {
-      return Some(algo.clone())
-    }
-  }
-  let workspace_limit = query_gpu_workspace_limit();
-  conn.sync();
 
-  let mut cudnn_h = conn.cudnn();
-  let kernel_desc = CudnnFilterDesc::<WTy>::create().unwrap();
-  let src_desc = CudnnTensorDesc::<XTy>::create().unwrap();
-  let dst_desc = CudnnTensorDesc::<YTy>::create().unwrap();
-  let conv_desc = CudnnConvDesc::create().unwrap();
+  let mut kernel_desc = CudnnFilterDesc::<WTy>::create().unwrap();
+  let mut src_desc = CudnnTensorDesc::<XTy>::create().unwrap();
+  let mut dst_desc = CudnnTensorDesc::<YTy>::create().unwrap();
+  let mut conv_desc = CudnnConvDesc::create().unwrap();
   match conv_shape {
     XConvFullShape::Conv2d(shape) => {
       // TODO: configure tensor layout.
@@ -456,20 +441,40 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
       assert_eq!(conv_type.y_ty, math_ty);
     }
   }
+
+  //let key = (dev, determinism, math_mode, conv_shape, conv_type);
+  let key = XGPUConvKey{
+    dev, determinism, math_mode, conv_shape, conv_type,
+  };
+  {
+    let cache = CACHED_CONV_BWD_W_ALGOS.lock().unwrap();
+    if let Some(algo) = cache.get(&key) {
+      return Some(algo.clone())
+    }
+  }
+
   let maybe_algo = {
+    let workspace_limit = query_gpu_workspace_limit();
+    conn.sync();
+
     let mut algo_count: i32 = 0;
     let mut algo_results: [cudnnConvolutionBwdFilterAlgoPerf_t; 10] = unsafe { uninitialized() };
-    let status = unsafe { cudnnFindConvolutionBackwardFilterAlgorithm(
-        cudnn_h.as_mut_ptr(),
-        src_desc.as_mut_ptr(),
-        dst_desc.as_mut_ptr(),
-        conv_desc.as_mut_ptr(),
-        kernel_desc.as_mut_ptr(),
-        10,
-        &mut algo_count as *mut _,
-        (&mut algo_results).as_mut_ptr(),
-    ) };
-    assert_eq!(status, cudnnStatus_t_CUDNN_STATUS_SUCCESS);
+    {
+      let mut stream = conn.cuda_stream();
+      let mut cudnn_h = conn.cudnn();
+      assert!(cudnn_h.set_stream(&mut stream).is_ok());
+      let status = unsafe { cudnnFindConvolutionBackwardFilterAlgorithm(
+          cudnn_h.as_mut_ptr(),
+          src_desc.as_mut_ptr(),
+          dst_desc.as_mut_ptr(),
+          conv_desc.as_mut_ptr(),
+          kernel_desc.as_mut_ptr(),
+          10,
+          &mut algo_count as *mut _,
+          (&mut algo_results).as_mut_ptr(),
+      ) };
+      assert_eq!(status, cudnnStatus_t_CUDNN_STATUS_SUCCESS);
+    }
     let mut found_k = None;
     for k in 0 .. algo_count as usize {
       if algo_results[k].status != cudnnStatus_t_CUDNN_STATUS_SUCCESS {
@@ -507,8 +512,8 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
       found_k = Some(k);
       break;
     }
-    found_k.map(|k| XGPUConvBwdWAlgo::Cudnn(CudnnGPUConvBwdWAlgo{
-      desc:       algo_results[k].algo,
+    found_k.map(|k| XGPUConvBwdWConfig::Cudnn(CudnnGPUConvBwdWConfig{
+      algo_desc:  algo_results[k].algo,
       workspace:  algo_results[k].memory
     }))
   };
@@ -522,7 +527,7 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
   maybe_algo
 }
 
-pub fn query_gpu_conv_bwd_x_algo<WTy, XTy, YTy>(dev: GPUDeviceId, maybe_determinism: Option<GPUMathDeterminism>, maybe_math_mode: Option<GPUMathMode>, conv_shape: XConvFullShape, conn: GPUDeviceConn) -> Option<XGPUConvBwdXAlgo>
+pub fn query_gpu_conv_bwd_x_algo<WTy, XTy, YTy>(dev: GPUDeviceId, maybe_determinism: Option<GPUMathDeterminism>, maybe_math_mode: Option<GPUMathMode>, conv_shape: XConvFullShape, conn: GPUDeviceConn) -> Option<XGPUConvBwdXConfig>
 where WTy: GPUDataTyped + CudnnDataTypeExt,
       XTy: GPUDataTyped + CudnnDataTypeExt,
       YTy: GPUDataTyped + CudnnDataTypeExt,
@@ -534,25 +539,11 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
     x_ty:   XTy::gpu_data_ty(),
     y_ty:   YTy::gpu_data_ty(),
   };
-  //let key = (dev, determinism, math_mode, conv_shape, conv_type);
-  let key = XGPUConvKey{
-    dev, determinism, math_mode, conv_shape, conv_type,
-  };
-  {
-    let cache = CACHED_CONV_BWD_X_ALGOS.lock().unwrap();
-    if let Some(algo) = cache.get(&key) {
-      return Some(algo.clone())
-    }
-  }
 
-  let workspace_limit = query_gpu_workspace_limit();
-  conn.sync();
-
-  let mut cudnn_h = conn.cudnn();
-  let kernel_desc = CudnnFilterDesc::<WTy>::create().unwrap();
-  let src_desc = CudnnTensorDesc::<XTy>::create().unwrap();
-  let dst_desc = CudnnTensorDesc::<YTy>::create().unwrap();
-  let conv_desc = CudnnConvDesc::create().unwrap();
+  let mut kernel_desc = CudnnFilterDesc::<WTy>::create().unwrap();
+  let mut src_desc = CudnnTensorDesc::<XTy>::create().unwrap();
+  let mut dst_desc = CudnnTensorDesc::<YTy>::create().unwrap();
+  let mut conv_desc = CudnnConvDesc::create().unwrap();
   match conv_shape {
     XConvFullShape::Conv2d(shape) => {
       // TODO: configure tensor layout.
@@ -609,20 +600,40 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
       assert_eq!(conv_type.y_ty, math_ty);
     }
   }
+
+  //let key = (dev, determinism, math_mode, conv_shape, conv_type);
+  let key = XGPUConvKey{
+    dev, determinism, math_mode, conv_shape, conv_type,
+  };
+  {
+    let cache = CACHED_CONV_BWD_X_ALGOS.lock().unwrap();
+    if let Some(algo) = cache.get(&key) {
+      return Some(algo.clone())
+    }
+  }
+
   let maybe_algo = {
+    let workspace_limit = query_gpu_workspace_limit();
+    conn.sync();
+
     let mut algo_count: i32 = 0;
     let mut algo_results: [cudnnConvolutionBwdDataAlgoPerf_t; 10] = unsafe { uninitialized() };
-    let status = unsafe { cudnnFindConvolutionBackwardDataAlgorithm(
-        cudnn_h.as_mut_ptr(),
-        kernel_desc.as_mut_ptr(),
-        dst_desc.as_mut_ptr(),
-        conv_desc.as_mut_ptr(),
-        src_desc.as_mut_ptr(),
-        10,
-        &mut algo_count as *mut _,
-        (&mut algo_results).as_mut_ptr(),
-    ) };
-    assert_eq!(status, cudnnStatus_t_CUDNN_STATUS_SUCCESS);
+    {
+      let mut stream = conn.cuda_stream();
+      let mut cudnn_h = conn.cudnn();
+      assert!(cudnn_h.set_stream(&mut stream).is_ok());
+      let status = unsafe { cudnnFindConvolutionBackwardDataAlgorithm(
+          cudnn_h.as_mut_ptr(),
+          kernel_desc.as_mut_ptr(),
+          dst_desc.as_mut_ptr(),
+          conv_desc.as_mut_ptr(),
+          src_desc.as_mut_ptr(),
+          10,
+          &mut algo_count as *mut _,
+          (&mut algo_results).as_mut_ptr(),
+      ) };
+      assert_eq!(status, cudnnStatus_t_CUDNN_STATUS_SUCCESS);
+    }
     let mut found_k = None;
     for k in 0 .. algo_count as usize {
       if algo_results[k].status != cudnnStatus_t_CUDNN_STATUS_SUCCESS {
@@ -660,8 +671,8 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
       found_k = Some(k);
       break;
     }
-    found_k.map(|k| XGPUConvBwdXAlgo::Cudnn(CudnnGPUConvBwdXAlgo{
-      desc:       algo_results[k].algo,
+    found_k.map(|k| XGPUConvBwdXConfig::Cudnn(CudnnGPUConvBwdXConfig{
+      algo_desc:  algo_results[k].algo,
       workspace:  algo_results[k].memory
     }))
   };
@@ -676,25 +687,30 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
 }
 
 pub fn gpu_batch_conv2d<WTy, XTy, YTy>(
-    algo: &XGPUConvFwdAlgo,
+    cfg: &XGPUConvFwdConfig,
     state: &mut XGPUConvState<WTy, XTy, YTy>,
     w: GPUDeviceArrayView4d<WTy>,
     x: GPUDeviceArrayView4d<XTy>,
     y: GPUDeviceArrayViewMut4d<YTy>,
     workspace: GPUDeviceArrayViewMut1d<u8>,
     conn: GPUDeviceConn)
-where WTy: GPUDataTyped + CudnnDataTypeExt,
+where /*WTy: GPUDataTyped + CudnnDataTypeExt,
       XTy: GPUDataTyped + CudnnDataTypeExt,
-      YTy: GPUDataTyped + CudnnDataTypeExt,
+      YTy: GPUDataTyped + CudnnDataTypeExt,*/
+      WTy: Copy,
+      XTy: Copy,
+      YTy: Copy,
+      CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
+      <CudnnHandle as CudnnConvExt<WTy, XTy, YTy>>::HostScalar: PseudoField,
 {
-  match (algo, state) {
-    (&XGPUConvFwdAlgo::Cudnn(ref algo), &mut XGPUConvState::Cudnn(ref mut state)) => {
-      // TODO: alpha beta types.
-      let alpha: f32 = 1.0;
-      let beta: f32 = 0.0;
+  match (cfg, state) {
+    (&XGPUConvFwdConfig::Cudnn(ref cfg), &mut XGPUConvState::Cudnn(ref mut state)) => {
       let mut stream = conn.cuda_stream();
       let mut cudnn_h = conn.cudnn();
       assert!(cudnn_h.set_stream(&mut stream).is_ok());
+      /*// TODO: alpha beta types.
+      let alpha: f32 = 1.0;
+      let beta: f32 = 0.0;
       let status = unsafe { cudnnConvolutionForward(
           cudnn_h.as_mut_ptr(),
           &alpha as *const _ as *const _,
@@ -703,39 +719,61 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
           state.kernel_desc.as_mut_ptr(),
           w.as_dptr() as *const _,
           state.conv_desc.as_mut_ptr(),
-          algo.desc,
+          cfg.algo_desc,
           workspace.as_mut_dptr() as *mut _,
           workspace.size(),
           &beta as *const _ as *const _,
           state.dst_desc.as_mut_ptr(),
           y.as_mut_dptr() as *mut _,
       ) };
-      assert_eq!(status, cudnnStatus_t_CUDNN_STATUS_SUCCESS);
+      assert_eq!(status, cudnnStatus_t_CUDNN_STATUS_SUCCESS);*/
+      let alpha: <CudnnHandle as CudnnConvExt<WTy, XTy, YTy>>::HostScalar = PseudoField::one();
+      let beta: <CudnnHandle as CudnnConvExt<WTy, XTy, YTy>>::HostScalar = PseudoRing::zero();
+      let status = unsafe { cudnn_h.conv_fwd(
+          alpha,
+          &mut state.src_desc,
+          x.as_dptr(),
+          &mut state.kernel_desc,
+          w.as_dptr(),
+          &mut state.conv_desc,
+          cfg.algo_desc,
+          workspace.as_mut_dptr(),
+          workspace.size(),
+          beta,
+          &mut state.dst_desc,
+          y.as_mut_dptr(),
+      ) };
+      assert!(status.is_ok());
     }
     _ => unimplemented!(),
   }
 }
 
 pub fn gpu_batch_left_transpose_conv2d<WTy, XTy, YTy>(
-    algo: &XGPUConvBwdXAlgo,
+    cfg: &XGPUConvBwdXConfig,
     state: &mut XGPUConvState<WTy, XTy, YTy>,
     w: GPUDeviceArrayView4d<WTy>,
     y: GPUDeviceArrayView4d<YTy>,
     x: GPUDeviceArrayViewMut4d<XTy>,
     workspace: GPUDeviceArrayViewMut1d<u8>,
     conn: GPUDeviceConn)
-where WTy: GPUDataTyped + CudnnDataTypeExt,
+where /*WTy: GPUDataTyped + CudnnDataTypeExt,
       XTy: GPUDataTyped + CudnnDataTypeExt,
-      YTy: GPUDataTyped + CudnnDataTypeExt,
+      YTy: GPUDataTyped + CudnnDataTypeExt,*/
+      WTy: Copy,
+      XTy: Copy,
+      YTy: Copy,
+      CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
+      <CudnnHandle as CudnnConvExt<WTy, XTy, YTy>>::HostScalar: PseudoField,
 {
-  match (algo, state) {
-    (&XGPUConvBwdXAlgo::Cudnn(ref algo), &mut XGPUConvState::Cudnn(ref mut state)) => {
-      // TODO: alpha beta types.
-      let alpha: f32 = 1.0;
-      let beta: f32 = 0.0;
+  match (cfg, state) {
+    (&XGPUConvBwdXConfig::Cudnn(ref cfg), &mut XGPUConvState::Cudnn(ref mut state)) => {
       let mut stream = conn.cuda_stream();
       let mut cudnn_h = conn.cudnn();
       assert!(cudnn_h.set_stream(&mut stream).is_ok());
+      /*// TODO: alpha beta types.
+      let alpha: f32 = 1.0;
+      let beta: f32 = 0.0;
       let status = unsafe { cudnnConvolutionBackwardData(
           cudnn_h.as_mut_ptr(),
           &alpha as *const _ as *const _,
@@ -744,39 +782,61 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
           state.dst_desc.as_mut_ptr(),
           y.as_dptr() as *const _,
           state.conv_desc.as_mut_ptr(),
-          algo.desc,
+          cfg.algo_desc,
           workspace.as_mut_dptr() as *mut _,
           workspace.size(),
           &beta as *const _ as *const _,
           state.src_desc.as_mut_ptr(),
           x.as_mut_dptr() as *mut _,
       ) };
-      assert_eq!(status, cudnnStatus_t_CUDNN_STATUS_SUCCESS);
+      assert_eq!(status, cudnnStatus_t_CUDNN_STATUS_SUCCESS);*/
+      let alpha: <CudnnHandle as CudnnConvExt<WTy, XTy, YTy>>::HostScalar = PseudoField::one();
+      let beta: <CudnnHandle as CudnnConvExt<WTy, XTy, YTy>>::HostScalar = PseudoRing::zero();
+      let status = unsafe { cudnn_h.conv_bwd_data(
+          alpha,
+          &mut state.kernel_desc,
+          w.as_dptr(),
+          &mut state.dst_desc,
+          y.as_dptr(),
+          &mut state.conv_desc,
+          cfg.algo_desc,
+          workspace.as_mut_dptr(),
+          workspace.size(),
+          beta,
+          &mut state.src_desc,
+          x.as_mut_dptr(),
+      ) };
+      assert!(status.is_ok());
     }
     _ => unimplemented!(),
   }
 }
 
 pub fn gpu_batch_right_transpose_conv2d<WTy, XTy, YTy>(
-    algo: &XGPUConvBwdWAlgo,
+    cfg: &XGPUConvBwdWConfig,
     state: &mut XGPUConvState<WTy, XTy, YTy>,
     y: GPUDeviceArrayView4d<YTy>,
     x: GPUDeviceArrayView4d<XTy>,
     w: GPUDeviceArrayViewMut4d<WTy>,
     workspace: GPUDeviceArrayViewMut1d<u8>,
     conn: GPUDeviceConn)
-where WTy: GPUDataTyped + CudnnDataTypeExt,
+where /*WTy: GPUDataTyped + CudnnDataTypeExt,
       XTy: GPUDataTyped + CudnnDataTypeExt,
-      YTy: GPUDataTyped + CudnnDataTypeExt,
+      YTy: GPUDataTyped + CudnnDataTypeExt,*/
+      WTy: Copy,
+      XTy: Copy,
+      YTy: Copy,
+      CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
+      <CudnnHandle as CudnnConvExt<WTy, XTy, YTy>>::HostScalar: PseudoField,
 {
-  match (algo, state) {
-    (&XGPUConvBwdWAlgo::Cudnn(ref algo), &mut XGPUConvState::Cudnn(ref mut state)) => {
-      // TODO: alpha beta types.
-      let alpha: f32 = 1.0;
-      let beta: f32 = 0.0;
+  match (cfg, state) {
+    (&XGPUConvBwdWConfig::Cudnn(ref cfg), &mut XGPUConvState::Cudnn(ref mut state)) => {
       let mut stream = conn.cuda_stream();
       let mut cudnn_h = conn.cudnn();
       assert!(cudnn_h.set_stream(&mut stream).is_ok());
+      /*// TODO: alpha beta types.
+      let alpha: f32 = 1.0;
+      let beta: f32 = 0.0;
       let status = unsafe { cudnnConvolutionBackwardFilter(
           cudnn_h.as_mut_ptr(),
           &alpha as *const _ as *const _,
@@ -785,14 +845,31 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
           state.dst_desc.as_mut_ptr(),
           y.as_dptr() as *const _,
           state.conv_desc.as_mut_ptr(),
-          algo.desc,
+          cfg.algo_desc,
           workspace.as_mut_dptr() as *mut _,
           workspace.size(),
           &beta as *const _ as *const _,
           state.kernel_desc.as_mut_ptr(),
           w.as_mut_dptr() as *mut _,
       ) };
-      assert_eq!(status, cudnnStatus_t_CUDNN_STATUS_SUCCESS);
+      assert_eq!(status, cudnnStatus_t_CUDNN_STATUS_SUCCESS);*/
+      let alpha: <CudnnHandle as CudnnConvExt<WTy, XTy, YTy>>::HostScalar = PseudoField::one();
+      let beta: <CudnnHandle as CudnnConvExt<WTy, XTy, YTy>>::HostScalar = PseudoRing::zero();
+      let status = unsafe { cudnn_h.conv_bwd_filter(
+          alpha,
+          &mut state.src_desc,
+          x.as_dptr(),
+          &mut state.dst_desc,
+          y.as_dptr(),
+          &mut state.conv_desc,
+          cfg.algo_desc,
+          workspace.as_mut_dptr(),
+          workspace.size(),
+          beta,
+          &mut state.kernel_desc,
+          w.as_mut_dptr(),
+      ) };
+      assert!(status.is_ok());
     }
     _ => unimplemented!(),
   }
