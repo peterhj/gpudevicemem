@@ -5,8 +5,8 @@ extern crate walkdir;
 use walkdir::{WalkDir};
 
 use std::env;
+use std::fs;
 use std::path::{PathBuf};
-use std::process::{Command};
 
 fn main() {
   let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
@@ -15,12 +15,14 @@ fn main() {
   println!("cargo:rustc-link-search=native={}", out_dir.display());
   println!("cargo:rustc-link-lib=static=gpudevicemem_routines_gpu");
 
-  let mut routines_gpu_src_dir = PathBuf::from(manifest_dir.clone());
-  routines_gpu_src_dir.push("routines_gpu");
+  println!("cargo:rerun-if-changed=build.rs");
+  let routines_gpu_src_dir = PathBuf::from(manifest_dir.clone()).join("routines_gpu");
   for entry in WalkDir::new(routines_gpu_src_dir.to_str().unwrap()) {
     let entry = entry.unwrap();
     println!("cargo:rerun-if-changed={}", entry.path().display());
   }
+
+  fs::remove_file(out_dir.join("libgpudevicemem_routines_gpu.a")).ok();
 
   cc::Build::new()
     .cuda(true)
@@ -45,11 +47,7 @@ fn main() {
     .file("routines_gpu/reduce.cu")
     .compile("libgpudevicemem_routines_gpu.a");
 
-  Command::new("rm")
-    .current_dir(&out_dir)
-    .arg("-f")
-    .arg(out_dir.join("routines_gpu_bind.rs").as_os_str().to_str().unwrap())
-    .status().unwrap();
+  fs::remove_file(out_dir.join("routines_gpu_bind.rs")).ok();
 
   bindgen::Builder::default()
     .header("routines_gpu/lib.h")
