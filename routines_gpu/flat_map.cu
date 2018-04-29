@@ -20,7 +20,7 @@ limitations under the License.
 #include <math_constants.h>
 
 template <typename T>
-class SetConstantFlatMap {
+class SetConstantFlatMapInplace {
 public:
   __forceinline__ __device__ static void ConstantFlatMapInplaceIndex(uint32_t idx, T c, T *y) {
     y[idx] = c;
@@ -38,22 +38,30 @@ __global__ void gpudevicemem_constant_flat_map_inplace_kernel(
   }
 }
 
-extern "C" void gpudevicemem_set_constant_flat_map_f32(
+extern "C" void gpudevicemem_set_constant_flat_map_inplace_f32(
     uint32_t len,
     float c,
     float *y,
     const KernelConfig *cfg,
     cudaStream_t stream)
 {
-  gpudevicemem_constant_flat_map_inplace_kernel<float, SetConstantFlatMap<float>><<<cfg->flat_grid_dim(len), cfg->flat_block_dim(), 0, stream>>>(
+  gpudevicemem_constant_flat_map_inplace_kernel<float, SetConstantFlatMapInplace<float>><<<cfg->flat_grid_dim(len), cfg->flat_block_dim(), 0, stream>>>(
       len, c, y);
 }
+
+template <typename T>
+class AddConstantFlatMap {
+public:
+  __forceinline__ __device__ static void ConstantFlatMapIndex(uint32_t idx, T c, const T *x, T *y) {
+    y[idx] = x[idx] + c;
+  }
+};
 
 template <typename T>
 class MultConstantFlatMap {
 public:
   __forceinline__ __device__ static void ConstantFlatMapIndex(uint32_t idx, T c, const T *x, T *y) {
-    y[idx] = c * x[idx];
+    y[idx] = x[idx] * c;
   }
 };
 
@@ -67,6 +75,18 @@ __global__ void gpudevicemem_constant_flat_map_kernel(
   for (uint32_t idx = gtindex(); idx < len; idx += gtcount()) {
     FlatMap::ConstantFlatMapIndex(idx, c, x, y);
   }
+}
+
+extern "C" void gpudevicemem_add_constant_flat_map_f32(
+    uint32_t len,
+    float c,
+    const float *x,
+    float *y,
+    const KernelConfig *cfg,
+    cudaStream_t stream)
+{
+  gpudevicemem_constant_flat_map_kernel<float, AddConstantFlatMap<float>><<<cfg->flat_grid_dim(len), cfg->flat_block_dim(), 0, stream>>>(
+      len, c, x, y);
 }
 
 extern "C" void gpudevicemem_mult_constant_flat_map_f32(

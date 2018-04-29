@@ -90,6 +90,13 @@ void gpudevicemem_set_constant_flat_map_f32(
     float *y,
     const struct KernelConfig *cfg,
     struct CUstream_st *stream);
+void gpudevicemem_add_constant_flat_map_f32(
+    uint32_t len,
+    float c,
+    const float *x,
+    float *y,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream);
 void gpudevicemem_mult_constant_flat_map_f32(
     uint32_t len,
     float c,
