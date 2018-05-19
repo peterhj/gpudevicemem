@@ -307,7 +307,7 @@ impl<'a> GPUDeviceConn<'a> {
 }
 
 thread_local! {
-  static SECTION_STACK: RefCell<Vec<Rc<RefCell<SectionState>>>> = RefCell::new(Vec::new());
+  static SECTION_STACK: RefCell<Vec<Rc<RefCell<GPUAsyncSectionState>>>> = RefCell::new(Vec::new());
 }
 
 struct ArcKey<T: ?Sized>(pub Arc<T>);
@@ -322,19 +322,20 @@ impl<T: ?Sized> Eq for ArcKey<T> {}
 
 impl<T: ?Sized> Hash for ArcKey<T> {
   fn hash<H>(&self, state: &mut H) where H: Hasher {
+    // NOTE: This should be correct; see the `Arc` impl of `fmt::Pointer`.
     let ptr: *const T = &*self.0;
     ptr.hash(state);
   }
 }
 
 #[derive(Default)]
-struct SectionState {
+struct GPUAsyncSectionState {
   wait_keys:    HashSet<(usize, usize)>,
   reg_data:     HashSet<ArcKey<Mutex<GPUAsyncData>>>,
 }
 
-impl SectionState {
-  pub fn wait_ticket(&mut self, ticket: Ticket, conn: GPUDeviceConn) {
+impl GPUAsyncSectionState {
+  pub fn wait_ticket(&mut self, ticket: GPUAsyncTicket, conn: GPUDeviceConn) {
     let key = (ticket.e_uid, ticket.s_uid);
     if !self.wait_keys.contains(&key) {
       if conn.cuda_stream_uid() != ticket.s_uid {
@@ -350,7 +351,7 @@ impl SectionState {
 }
 
 #[derive(Clone)]
-pub struct Ticket {
+pub struct GPUAsyncTicket {
   event:    Arc<Mutex<CudaEvent>>,
   //stream:   Arc<Mutex<CudaStream>>,
   e_uid:    usize,
@@ -416,7 +417,7 @@ impl GPUAsyncSection {
       event:    self.event.lock(),
       conn:     conn,
       evcopy:   evcopy,
-      state:    SectionState::default(),
+      state:    GPUAsyncSectionState::default(),
     }
   }
 }
@@ -425,7 +426,7 @@ pub struct GPUAsyncSectionGuard<'a> {
   event:    MutexGuard<'a, CudaEvent>,
   conn:     GPUDeviceConn<'a>,
   evcopy:   Arc<Mutex<CudaEvent>>,
-  state:    SectionState,
+  state:    GPUAsyncSectionState,
 }
 
 impl<'a> Drop for GPUAsyncSectionGuard<'a> {
@@ -436,7 +437,7 @@ impl<'a> Drop for GPUAsyncSectionGuard<'a> {
       assert!(self.event.record(&mut *stream).is_ok());
       (self.event.unique_id(), stream.unique_id())
     };
-    let ticket = Ticket{
+    let ticket = GPUAsyncTicket{
       event:    self.evcopy.clone(),
       e_uid:    e_uid,
       s_uid:    s_uid,
@@ -451,8 +452,9 @@ impl<'a> Drop for GPUAsyncSectionGuard<'a> {
 }
 
 impl<'a> GPUAsyncSectionGuard<'a> {
-  // TODO: this is a stopgap API, it should be replaced by access to a
-  // thread-local stack of section guard states.
+  // TODO: This is a stopgap API. It should be replaced by access to a
+  // thread-local stack of section guard states. APIs that create views to
+  // GPU device memory should then call `wait` on itself for the active section.
   pub fn _wait(&mut self, data: Arc<Mutex<GPUAsyncData>>, /*conn: GPUDeviceConn*/) {
     // If the data has a ticket, wait on it.
     if let Some(ticket) = data.lock().take_ticket() {
@@ -466,17 +468,17 @@ impl<'a> GPUAsyncSectionGuard<'a> {
 
 #[derive(Default)]
 pub struct GPUAsyncData {
-  tick: Option<Ticket>,
+  tick: Option<GPUAsyncTicket>,
 }
 
 impl GPUAsyncData {
-  pub fn put_ticket(&mut self, ticket: Ticket) -> Option<Ticket> {
+  pub fn put_ticket(&mut self, ticket: GPUAsyncTicket) -> Option<GPUAsyncTicket> {
     let prev_tick = self.tick.take();
     self.tick = Some(ticket);
     prev_tick
   }
 
-  pub fn take_ticket(&mut self) -> Option<Ticket> {
+  pub fn take_ticket(&mut self) -> Option<GPUAsyncTicket> {
     self.tick.take()
   }
 }

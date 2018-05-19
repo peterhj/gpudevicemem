@@ -270,7 +270,7 @@ impl<Idx, T> AsView for GPUDeviceInnerBatchArray<Idx, T> where Idx: ArrayIndex, 
   type ViewTy = GPUDeviceArrayView<Idx::Above, T>;
 
   fn as_view(&self) -> GPUDeviceArrayView<Idx::Above, T> {
-    let view_size = self.size.prepend(self.batch_sz);
+    let view_size = self.size.index_prepend(self.batch_sz);
     // TODO
     unimplemented!();
   }
@@ -293,10 +293,40 @@ pub type GPUDeviceOuterBatchArray2d<T> = GPUDeviceOuterBatchArray<Index2d, T>;
 pub type GPUDeviceOuterBatchArray3d<T> = GPUDeviceOuterBatchArray<Index3d, T>;
 pub type GPUDeviceOuterBatchArray4d<T> = GPUDeviceOuterBatchArray<Index4d, T>;
 
-impl<Idx, T> GPUDeviceBatchArrayZeros for GPUDeviceOuterBatchArray<Idx, T> where Idx: ArrayIndex, T: Copy {
-  fn zeros(size: Idx, batch_sz: usize, conn: GPUDeviceConn) -> Self {
-    // TODO
-    unimplemented!();
+impl<Idx, T> GPUDeviceOuterBatchArray<Idx, T> where Idx: ArrayIndex, T: Copy + 'static {
+  pub unsafe fn alloc_default(size: Idx, max_batch_sz: usize, conn: GPUDeviceConn) -> Self {
+    Self::alloc(GPUDeviceDefaultAlloc::default(), size, max_batch_sz, conn)
+  }
+
+  pub unsafe fn alloc<Alloc>(allocator: Alloc, size: Idx, max_batch_sz: usize, conn: GPUDeviceConn) -> Self where Alloc: GPUDeviceAlloc<T> + Sized {
+    let mem = unsafe { allocator.alloc(size.flat_len() * max_batch_sz, conn) };
+    GPUDeviceOuterBatchArray{
+      base:     mem.as_mut_dptr(),
+      size:     size.clone(),
+      offset:   Idx::zero(),
+      stride:   size.to_packed_stride(),
+      batch_sz:     max_batch_sz,
+      max_batch_sz: max_batch_sz,
+      mem:      Arc::new(mem),
+    }
+  }
+}
+
+impl<Idx, T> GPUDeviceBatchArrayZeros for GPUDeviceOuterBatchArray<Idx, T>
+where Idx: ArrayIndex,
+      T: ZeroBits + Copy + 'static,
+      GPUDeviceArrayViewMut<Idx::Above, T>: GPUDeviceArrayViewMutOpsExt,
+{
+  fn zeros(size: Idx, max_batch_sz: usize, conn: GPUDeviceConn) -> Self {
+    let mut arr = unsafe { GPUDeviceOuterBatchArray::<Idx, T>::alloc_default(size, max_batch_sz, conn.clone()) };
+    arr.as_view_mut().set_zeros(conn);
+    arr
+  }
+}
+
+impl<Idx, T> GPUDeviceAsyncMem for GPUDeviceOuterBatchArray<Idx, T> where Idx: ArrayIndex, T: Copy {
+  fn async_data(&self) -> Arc<Mutex<GPUAsyncData>> {
+    self.mem.async_data()
   }
 }
 
@@ -337,8 +367,8 @@ impl<Idx, T> AsView for GPUDeviceOuterBatchArray<Idx, T> where Idx: ArrayIndex, 
   type ViewTy = GPUDeviceArrayView<Idx::Above, T>;
 
   fn as_view(&self) -> GPUDeviceArrayView<Idx::Above, T> {
-    let view_size = self.size.append(self.batch_sz);
-    let view_offset = self.offset.append(0);
+    let view_size = self.size.index_append(self.batch_sz);
+    let view_offset = self.offset.index_append(0);
     // TODO: support for a batch stride.
     let view_stride = self.stride.stride_append_packed(self.size.outside());
     GPUDeviceArrayView{
@@ -355,8 +385,8 @@ impl<Idx, T> AsViewMut for GPUDeviceOuterBatchArray<Idx, T> where Idx: ArrayInde
   type ViewMutTy = GPUDeviceArrayViewMut<Idx::Above, T>;
 
   fn as_view_mut(&mut self) -> GPUDeviceArrayViewMut<Idx::Above, T> {
-    let view_size = self.size.append(self.batch_sz);
-    let view_offset = self.offset.append(0);
+    let view_size = self.size.index_append(self.batch_sz);
+    let view_offset = self.offset.index_append(0);
     // TODO: support for a batch stride.
     let view_stride = self.stride.stride_append_packed(self.size.outside());
     GPUDeviceArrayViewMut{
@@ -597,7 +627,7 @@ impl<Idx, T> GPUDeviceArrayViewMutOpsExt for GPUDeviceArrayViewMut<Idx, T> where
     unimplemented!();
   }
 
-  fn copy(&mut self, src: GPUDeviceArrayView<Idx, T>, conn: GPUDeviceConn) {
+  default fn copy(&mut self, src: GPUDeviceArrayView<Idx, T>, conn: GPUDeviceConn) {
     assert_eq!(self.size, src.size());
     if self.is_packed() && src.is_packed() {
       let len = self.size.flat_len();
@@ -644,6 +674,9 @@ impl<Idx, T> GPUDeviceArrayViewMutOpsExt for GPUDeviceArrayViewMut<Idx, T> where
     // TODO
     unimplemented!();
   }
+}
+
+impl<Idx> GPUDeviceArrayViewMutOpsExt for GPUDeviceArrayViewMut<Idx, f32> where Idx: ArrayIndex {
 }
 
 impl<Idx> GPUDeviceArrayViewMutOpsExt for GPUDeviceArrayViewMut<Idx, u32> where Idx: ArrayIndex {
