@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-use ::{GPUDeviceConn, GPUDeviceAlloc, GPUDeviceDefaultAlloc, GPUAsyncData, GPUDeviceAsyncMem, GPUDeviceMem};
+use ::{GPUDeviceId, GPUDeviceConn, GPUDeviceAlloc, GPUDeviceDefaultAlloc, GPUAsyncState, GPUDeviceAsync, GPUDeviceMem, GPUDevicePlace};
 use ffi::routines_gpu::*;
 
 use arrayidx::*;
@@ -122,9 +122,9 @@ impl<Idx, T> GPUDeviceArray<Idx, T> where Idx: ArrayIndex, T: Copy + 'static {
   }
 }
 
-impl<Idx, T> GPUDeviceAsyncMem for GPUDeviceArray<Idx, T> where Idx: ArrayIndex, T: Copy {
-  fn async_data(&self) -> Arc<Mutex<GPUAsyncData>> {
-    self.mem.async_data()
+impl<Idx, T> GPUDeviceAsync for GPUDeviceArray<Idx, T> where Idx: ArrayIndex, T: Copy {
+  fn async_state(&self) -> Arc<Mutex<GPUAsyncState>> {
+    self.mem.async_state()
   }
 }
 
@@ -324,9 +324,9 @@ where Idx: ArrayIndex,
   }
 }
 
-impl<Idx, T> GPUDeviceAsyncMem for GPUDeviceOuterBatchArray<Idx, T> where Idx: ArrayIndex, T: Copy {
-  fn async_data(&self) -> Arc<Mutex<GPUAsyncData>> {
-    self.mem.async_data()
+impl<Idx, T> GPUDeviceAsync for GPUDeviceOuterBatchArray<Idx, T> where Idx: ArrayIndex, T: Copy {
+  fn async_state(&self) -> Arc<Mutex<GPUAsyncState>> {
+    self.mem.async_state()
   }
 }
 
@@ -418,6 +418,25 @@ impl<Idx, T> FlatView for GPUDeviceOuterBatchArray<Idx, T> where Idx: ArrayIndex
   }
 }
 
+impl<Idx, T> FlatViewMut for GPUDeviceOuterBatchArray<Idx, T> where Idx: ArrayIndex, T: Copy {
+  type FlatViewMutTy = GPUDeviceArrayViewMut1d<T>;
+
+  fn flat_view_mut(&mut self) -> Option<GPUDeviceArrayViewMut1d<T>> {
+    if self.is_packed() {
+      let flat_size = self.size.flat_len() * self.batch_sz;
+      Some(GPUDeviceArrayViewMut{
+        base:   self.base,
+        size:   flat_size,
+        offset: 0,
+        stride: flat_size.to_packed_stride(),
+        mem:    self.mem.clone(),
+      })
+    } else {
+      None
+    }
+  }
+}
+
 #[derive(Clone)]
 pub struct GPUDeviceArrayView<Idx, T> where T: Copy {
   base:     *mut T,
@@ -435,15 +454,21 @@ pub type GPUDeviceArrayView3d<T> = GPUDeviceArrayView<Index3d, T>;
 pub type GPUDeviceArrayView4d<T> = GPUDeviceArrayView<Index4d, T>;
 pub type GPUDeviceArrayView5d<T> = GPUDeviceArrayView<Index5d, T>;
 
-impl<Idx, T> GPUDeviceAsyncMem for GPUDeviceArrayView<Idx, T> where Idx: ArrayIndex, T: Copy {
-  fn async_data(&self) -> Arc<Mutex<GPUAsyncData>> {
-    self.mem.async_data()
-  }
-}
-
 impl<Idx, T> GPUDeviceArrayView<Idx, T> where Idx: ArrayIndex, T: Copy {
   pub unsafe fn as_dptr(&self) -> *const T {
     self.base.offset(self.flat_offset() as _)
+  }
+}
+
+impl<Idx, T> GPUDevicePlace for GPUDeviceArrayView<Idx, T> where Idx: ArrayIndex, T: Copy {
+  fn device(&self) -> GPUDeviceId {
+    self.mem.device()
+  }
+}
+
+impl<Idx, T> GPUDeviceAsync for GPUDeviceArrayView<Idx, T> where Idx: ArrayIndex, T: Copy {
+  fn async_state(&self) -> Arc<Mutex<GPUAsyncState>> {
+    self.mem.async_state()
   }
 }
 
@@ -524,9 +549,25 @@ pub type GPUDeviceArrayViewMut2d<T> = GPUDeviceArrayViewMut<Index2d, T>;
 pub type GPUDeviceArrayViewMut3d<T> = GPUDeviceArrayViewMut<Index3d, T>;
 pub type GPUDeviceArrayViewMut4d<T> = GPUDeviceArrayViewMut<Index4d, T>;
 
-impl<Idx, T> GPUDeviceAsyncMem for GPUDeviceArrayViewMut<Idx, T> where Idx: ArrayIndex, T: Copy {
-  fn async_data(&self) -> Arc<Mutex<GPUAsyncData>> {
-    self.mem.async_data()
+impl<Idx, T> GPUDeviceArrayViewMut<Idx, T> where Idx: ArrayIndex, T: Copy {
+  pub unsafe fn as_dptr(&self) -> *const T {
+    self.base.offset(self.flat_offset() as _)
+  }
+
+  pub unsafe fn as_mut_dptr(&self) -> *mut T {
+    self.base.offset(self.flat_offset() as _)
+  }
+}
+
+impl<Idx, T> GPUDevicePlace for GPUDeviceArrayViewMut<Idx, T> where Idx: ArrayIndex, T: Copy {
+  fn device(&self) -> GPUDeviceId {
+    self.mem.device()
+  }
+}
+
+impl<Idx, T> GPUDeviceAsync for GPUDeviceArrayViewMut<Idx, T> where Idx: ArrayIndex, T: Copy {
+  fn async_state(&self) -> Arc<Mutex<GPUAsyncState>> {
+    self.mem.async_state()
   }
 }
 
@@ -588,16 +629,6 @@ impl<Idx, T> GPUDeviceArrayViewMut<Idx, T> where Idx: ArrayIndex, T: Copy {
     } else {
       unimplemented!();
     }
-  }
-}
-
-impl<Idx, T> GPUDeviceArrayViewMut<Idx, T> where Idx: ArrayIndex, T: Copy {
-  pub unsafe fn as_dptr(&self) -> *const T {
-    self.base.offset(self.flat_offset() as _)
-  }
-
-  pub unsafe fn as_mut_dptr(&self) -> *mut T {
-    self.base.offset(self.flat_offset() as _)
   }
 }
 
