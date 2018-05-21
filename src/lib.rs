@@ -234,7 +234,7 @@ impl GPUDeviceStreamPool {
     CudaDevice::set_current(self.dev_id.0).unwrap();
     conn_dev.set(self.dev_id);
     GPUDeviceConn{
-      pop:          Rc::new(PopConn{pop_dev: GPUDeviceId(prev_dev), conn_dev}),
+      pop:          Rc::new(PopConn{pop_dev: prev_dev, conn_dev}),
       dev:          self.dev_id,
       kernel_cfg:   self.kernel_cfg,
       cuda_s_uid:   self.cuda_s_uid,
