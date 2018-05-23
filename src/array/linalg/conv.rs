@@ -50,13 +50,13 @@ pub struct XGPUConvKey {
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum GPUMathDeterminism {
-  Nondeterministic,
+  AllowNondeterministic,
   Deterministic,
 }
 
 impl Default for GPUMathDeterminism {
   fn default() -> Self {
-    GPUMathDeterminism::Nondeterministic
+    GPUMathDeterminism::AllowNondeterministic
   }
 }
 
@@ -150,6 +150,14 @@ pub enum XGPUConvFwdConfig {
   Cudnn(CudnnGPUConvFwdConfig),
 }
 
+impl XGPUConvFwdConfig {
+  pub fn workspace_size(&self) -> usize {
+    match self {
+      &XGPUConvFwdConfig::Cudnn(ref cfg) => cfg.workspace,
+    }
+  }
+}
+
 #[derive(Clone, Copy)]
 pub struct CudnnGPUConvFwdConfig {
   pub algo_desc:    cudnnConvolutionFwdAlgo_t,
@@ -161,6 +169,14 @@ pub enum XGPUConvBwdWConfig {
   Cudnn(CudnnGPUConvBwdWConfig),
 }
 
+impl XGPUConvBwdWConfig {
+  pub fn workspace_size(&self) -> usize {
+    match self {
+      &XGPUConvBwdWConfig::Cudnn(ref cfg) => cfg.workspace,
+    }
+  }
+}
+
 #[derive(Clone, Copy)]
 pub struct CudnnGPUConvBwdWConfig {
   pub algo_desc:    cudnnConvolutionBwdFilterAlgo_t,
@@ -170,6 +186,14 @@ pub struct CudnnGPUConvBwdWConfig {
 #[derive(Clone, Copy)]
 pub enum XGPUConvBwdXConfig {
   Cudnn(CudnnGPUConvBwdXConfig),
+}
+
+impl XGPUConvBwdXConfig {
+  pub fn workspace_size(&self) -> usize {
+    match self {
+      &XGPUConvBwdXConfig::Cudnn(ref cfg) => cfg.workspace,
+    }
+  }
 }
 
 #[derive(Clone, Copy)]
@@ -226,7 +250,7 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
     XConvFullShape::Conv2d(shape) => {
       // TODO: configure tensor layout.
       assert!(kernel_desc.set_4d_nchw(
-          sz2int(shape.dst_size[2]),
+          sz2int(shape.dst_size[3]),
           sz2int(shape.src_size[2]),
           sz2int(shape.ker_size[1]),
           sz2int(shape.ker_size[0]),
@@ -389,7 +413,7 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
     XConvFullShape::Conv2d(shape) => {
       // TODO: configure tensor layout.
       assert!(kernel_desc.set_4d_nchw(
-          sz2int(shape.dst_size[2]),
+          sz2int(shape.dst_size[3]),
           sz2int(shape.src_size[2]),
           sz2int(shape.ker_size[1]),
           sz2int(shape.ker_size[0]),
@@ -548,7 +572,7 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
     XConvFullShape::Conv2d(shape) => {
       // TODO: configure tensor layout.
       assert!(kernel_desc.set_4d_nchw(
-          sz2int(shape.dst_size[2]),
+          sz2int(shape.dst_size[3]),
           sz2int(shape.src_size[2]),
           sz2int(shape.ker_size[1]),
           sz2int(shape.ker_size[0]),
@@ -686,66 +710,79 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
   maybe_algo
 }
 
-pub fn gpu_batch_conv2d<WTy, XTy, YTy>(
+pub trait GPUBatchConvOps<WTy: Copy, XTy: Copy, YTy: Copy> {
+  fn batch_conv2d(&mut self,
+      cfg: &XGPUConvFwdConfig,
+      state: &mut XGPUConvState<WTy, XTy, YTy>,
+      w: GPUDeviceArrayView4d<WTy>,
+      x: GPUDeviceArrayView4d<XTy>,
+      workspace: GPUDeviceArrayViewMut1d<u8>,
+      conn: GPUDeviceConn);
+}
+
+//pub fn gpu_batch_conv2d<WTy, XTy, YTy>(
+impl<WTy: Copy, XTy: Copy, YTy: Copy> GPUBatchConvOps<WTy, XTy, YTy> for GPUDeviceArrayViewMut4d<YTy>
+where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
+      <CudnnHandle as CudnnConvExt<WTy, XTy, YTy>>::HostScalar: PseudoField,
+{
+  fn batch_conv2d(&mut self,
     cfg: &XGPUConvFwdConfig,
     state: &mut XGPUConvState<WTy, XTy, YTy>,
     w: GPUDeviceArrayView4d<WTy>,
     x: GPUDeviceArrayView4d<XTy>,
-    y: GPUDeviceArrayViewMut4d<YTy>,
+    //y: GPUDeviceArrayViewMut4d<YTy>,
     workspace: GPUDeviceArrayViewMut1d<u8>,
     conn: GPUDeviceConn)
-where /*WTy: GPUDataTyped + CudnnDataTypeExt,
-      XTy: GPUDataTyped + CudnnDataTypeExt,
-      YTy: GPUDataTyped + CudnnDataTypeExt,*/
-      WTy: Copy,
+/*where WTy: Copy,
       XTy: Copy,
       YTy: Copy,
       CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
-      <CudnnHandle as CudnnConvExt<WTy, XTy, YTy>>::HostScalar: PseudoField,
-{
-  match (cfg, state) {
-    (&XGPUConvFwdConfig::Cudnn(ref cfg), &mut XGPUConvState::Cudnn(ref mut state)) => {
-      let mut stream = conn.cuda_stream();
-      let mut cudnn_h = conn.cudnn();
-      assert!(cudnn_h.set_stream(&mut stream).is_ok());
-      /*// TODO: alpha beta types.
-      let alpha: f32 = 1.0;
-      let beta: f32 = 0.0;
-      let status = unsafe { cudnnConvolutionForward(
-          cudnn_h.as_mut_ptr(),
-          &alpha as *const _ as *const _,
-          state.src_desc.as_mut_ptr(),
-          x.as_dptr() as *const _,
-          state.kernel_desc.as_mut_ptr(),
-          w.as_dptr() as *const _,
-          state.conv_desc.as_mut_ptr(),
-          cfg.algo_desc,
-          workspace.as_mut_dptr() as *mut _,
-          workspace.size(),
-          &beta as *const _ as *const _,
-          state.dst_desc.as_mut_ptr(),
-          y.as_mut_dptr() as *mut _,
-      ) };
-      assert_eq!(status, cudnnStatus_t_CUDNN_STATUS_SUCCESS);*/
-      let alpha: <CudnnHandle as CudnnConvExt<WTy, XTy, YTy>>::HostScalar = PseudoField::one();
-      let beta: <CudnnHandle as CudnnConvExt<WTy, XTy, YTy>>::HostScalar = PseudoRing::zero();
-      let status = unsafe { cudnn_h.conv_fwd(
-          alpha,
-          &mut state.src_desc,
-          x.as_dptr(),
-          &mut state.kernel_desc,
-          w.as_dptr(),
-          &mut state.conv_desc,
-          cfg.algo_desc,
-          workspace.as_mut_dptr(),
-          workspace.size(),
-          beta,
-          &mut state.dst_desc,
-          y.as_mut_dptr(),
-      ) };
-      assert!(status.is_ok());
+      <CudnnHandle as CudnnConvExt<WTy, XTy, YTy>>::HostScalar: PseudoField,*/
+  {
+    match (cfg, state) {
+      (&XGPUConvFwdConfig::Cudnn(ref cfg), &mut XGPUConvState::Cudnn(ref mut state)) => {
+        let mut stream = conn.cuda_stream();
+        let mut cudnn_h = conn.cudnn();
+        assert!(cudnn_h.set_stream(&mut stream).is_ok());
+        /*// TODO: alpha beta types.
+        let alpha: f32 = 1.0;
+        let beta: f32 = 0.0;
+        let status = unsafe { cudnnConvolutionForward(
+            cudnn_h.as_mut_ptr(),
+            &alpha as *const _ as *const _,
+            state.src_desc.as_mut_ptr(),
+            x.as_dptr() as *const _,
+            state.kernel_desc.as_mut_ptr(),
+            w.as_dptr() as *const _,
+            state.conv_desc.as_mut_ptr(),
+            cfg.algo_desc,
+            workspace.as_mut_dptr() as *mut _,
+            workspace.size(),
+            &beta as *const _ as *const _,
+            state.dst_desc.as_mut_ptr(),
+            y.as_mut_dptr() as *mut _,
+        ) };
+        assert_eq!(status, cudnnStatus_t_CUDNN_STATUS_SUCCESS);*/
+        let alpha: <CudnnHandle as CudnnConvExt<WTy, XTy, YTy>>::HostScalar = PseudoField::one();
+        let beta: <CudnnHandle as CudnnConvExt<WTy, XTy, YTy>>::HostScalar = PseudoRing::zero();
+        let status = unsafe { cudnn_h.conv_fwd(
+            alpha,
+            &mut state.src_desc,
+            x.as_dptr(),
+            &mut state.kernel_desc,
+            w.as_dptr(),
+            &mut state.conv_desc,
+            cfg.algo_desc,
+            workspace.as_mut_dptr(),
+            workspace.size(),
+            beta,
+            &mut state.dst_desc,
+            self.as_mut_dptr(),
+        ) };
+        assert!(status.is_ok());
+      }
+      _ => unimplemented!(),
     }
-    _ => unimplemented!(),
   }
 }
 
