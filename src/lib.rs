@@ -55,6 +55,26 @@ pub mod utils;
 
 //static STREAM_POOL_UID_COUNTER: AtomicU64 = ATOMIC_U64_INIT;
 
+pub struct GPUHostMem<T> where T: Copy {
+  buf:  *mut T,
+  len:  usize,
+  phsz: usize,
+}
+
+impl<T> GPUHostMem<T> where T: Copy {
+  pub unsafe fn alloc(len: usize) -> Self {
+    let ptr = match unsafe { cuda_alloc_host(len) } {
+      Err(_) => panic!(),
+      Ok(ptr) => ptr,
+    };
+    GPUHostMem{
+      buf:  ptr,
+      len:  len,
+      phsz: len * size_of::<T>(),
+    }
+  }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct GPUDeviceId(pub i32);
 
@@ -573,87 +593,34 @@ impl<T> GPUDeviceMem<T> for GPUDeviceTypedMem<T> where T: Copy {
   }
 }
 
-pub struct GPUDeviceRegionSliceMem {
-  dev:  GPUDeviceId,
-  dptr: *mut u8,
+pub struct GPUDeviceSliceMem<T> where T: Copy {
+  dptr: *mut T,
+  len:  usize,
   phsz: usize,
-  _mem: Arc<GPUDeviceRegionRawMem>,
+  _mem: Arc<GPUDeviceMem<T>>,
 }
 
-unsafe impl Send for GPUDeviceRegionSliceMem {}
-unsafe impl Sync for GPUDeviceRegionSliceMem {}
+unsafe impl<T> Send for GPUDeviceSliceMem<T> where T: Copy {}
+unsafe impl<T> Sync for GPUDeviceSliceMem<T> where T: Copy {}
 
-impl GPUDeviceAsync for GPUDeviceRegionSliceMem {
+impl<T> GPUDeviceAsync for GPUDeviceSliceMem<T> where T: Copy {
   fn async_state(&self) -> Arc<Mutex<GPUAsyncState>> {
     self._mem.async_state()
   }
 }
 
-impl GPUDevicePlace for GPUDeviceRegionSliceMem {
+impl<T> GPUDevicePlace for GPUDeviceSliceMem<T> where T: Copy {
   fn device(&self) -> GPUDeviceId {
     self._mem.device()
   }
 }
 
-impl GPUDeviceMem<u8> for GPUDeviceRegionSliceMem {
-  unsafe fn as_dptr(&self) -> *const u8 {
+impl<T> GPUDeviceMem<T> for GPUDeviceSliceMem<T> where T: Copy {
+  unsafe fn as_dptr(&self) -> *const T {
     self.dptr
   }
 
-  unsafe fn as_mut_dptr(&self) -> *mut u8 {
-    self.dptr
-  }
-
-  fn len(&self) -> usize {
-    self.phsz
-  }
-
-  fn size_bytes(&self) -> usize {
-    self.phsz
-  }
-}
-
-pub struct GPUDeviceRegionRawMem {
-  dev:  GPUDeviceId,
-  dptr: *mut u8,
-  phsz: usize,
-}
-
-unsafe impl Send for GPUDeviceRegionRawMem {}
-unsafe impl Sync for GPUDeviceRegionRawMem {}
-
-impl Drop for GPUDeviceRegionRawMem {
-  fn drop(&mut self) {
-    let pop_dev = CudaDevice::get_current().unwrap();
-    //CudaDevice::synchronize().unwrap();
-    CudaDevice::set_current(self.dev.0).unwrap();
-    match unsafe { cuda_free_device::<u8>(self.dptr) } {
-      Err(_) => panic!(),
-      Ok(_) => {}
-    }
-    CudaDevice::set_current(pop_dev).unwrap();
-  }
-}
-
-impl GPUDeviceAsync for GPUDeviceRegionRawMem {
-  fn async_state(&self) -> Arc<Mutex<GPUAsyncState>> {
-    // TODO
-    unimplemented!();
-  }
-}
-
-impl GPUDevicePlace for GPUDeviceRegionRawMem {
-  fn device(&self) -> GPUDeviceId {
-    self.dev
-  }
-}
-
-impl GPUDeviceMem<u8> for GPUDeviceRegionRawMem {
-  unsafe fn as_dptr(&self) -> *const u8 {
-    self.dptr
-  }
-
-  unsafe fn as_mut_dptr(&self) -> *mut u8 {
+  unsafe fn as_mut_dptr(&self) -> *mut T {
     self.dptr
   }
 
@@ -674,6 +641,7 @@ fn round_up(sz: usize, alignment: usize) -> usize {
 }
 
 fn check_alignment(sz: usize, alignment: usize) -> bool {
+  assert!(alignment >= 1);
   sz % alignment == 0
 }
 
@@ -726,7 +694,7 @@ impl<T> GPUDeviceAlloc<T> for GPUDeviceBurstArena where T: Copy + 'static {
 pub struct GPUDeviceBurstArenaInner {
   dev:      GPUDeviceId,
   max_phsz: usize,
-  regions:  Vec<Arc<GPUDeviceRegionRawMem>>,
+  regions:  Vec<Arc<GPUDeviceRawMem<u8>>>,
   used0:    usize,
   used_ext: usize,
   reserved: usize,
@@ -760,11 +728,12 @@ impl GPUDeviceBurstArenaInner {
         Err(e) => panic!("GPUDeviceBurstArena: failed to alloc size {}: {:?}", merge_phsz, e),
         Ok(dptr) => dptr,
       };
-      let reg = Arc::new(GPUDeviceRegionRawMem{
+      let reg = Arc::new(GPUDeviceRawMem{
         dev:    self.dev,
         dptr:   dptr,
+        len:    merge_phsz,
         phsz:   merge_phsz,
-        //rdup:   merge_phsz,
+        asd:    Arc::new(Mutex::new(GPUAsyncState::default())),
       });
       self.regions.push(reg.clone());
     }
@@ -785,9 +754,9 @@ impl GPUDeviceBurstArenaInner {
     let mem: Arc<GPUDeviceMem<u8>> = if self.used0 + rdup_phsz <= self.regions[0].phsz {
       let dptr = self.regions[0].dptr.offset(self.used0 as _);
       assert!(check_alignment(dptr as usize, BURST_MEM_ALIGN));
-      let slice = Arc::new(GPUDeviceRegionSliceMem{
-        dev:    self.dev,
+      let slice = Arc::new(GPUDeviceSliceMem{
         dptr:   dptr,
+        len:    rdup_phsz,
         phsz:   rdup_phsz,
         _mem:   self.regions[0].clone(),
       });
@@ -799,10 +768,12 @@ impl GPUDeviceBurstArenaInner {
         Ok(dptr) => dptr,
       };
       assert!(check_alignment(dptr as usize, BURST_MEM_ALIGN));
-      let reg = Arc::new(GPUDeviceRegionRawMem{
+      let reg = Arc::new(GPUDeviceRawMem{
         dev:    self.dev,
         dptr:   dptr,
+        len:    rdup_phsz,
         phsz:   rdup_phsz,
+        asd:    Arc::new(Mutex::new(GPUAsyncState::default())),
       });
       self.regions.push(reg.clone());
       self.used_ext += rdup_phsz;

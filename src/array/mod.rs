@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-use ::{GPUDeviceId, GPUDeviceConn, GPUDeviceAlloc, GPUDeviceDefaultAlloc, GPUAsyncState, GPUDeviceAsync, GPUDeviceMem, GPUDevicePlace};
+use ::{GPUDeviceId, GPUDeviceConn, GPUDeviceAlloc, GPUDeviceDefaultAlloc, GPUAsyncState, GPUDeviceAsync, GPUDeviceMem, GPUDevicePlace, GPUHostMem};
 use ffi::routines_gpu::*;
 
 use arrayidx::*;
@@ -63,16 +63,27 @@ pub trait FlatViewMut: FlatView {
   fn view(self, idx: Idx) -> Self where Self: Sized;
 }*/
 
-pub trait GPUDeviceArrayZeros<T>: Array where T: Copy + 'static {
-  fn zeros(size: Self::Idx, conn: GPUDeviceConn) -> Self where Self: Sized;
-  fn zeros_with_alloc<Alloc>(allocator: Alloc, size: Self::Idx, conn: GPUDeviceConn) -> Self where Self: Sized, T: Copy + 'static, Alloc: GPUDeviceAlloc<T> + Sized;
-  //fn zeros_with_storage(size: Self::Idx, mem: Arc<GPUDeviceMem<T>>, conn: GPUDeviceConn) -> Self where Self: Sized;
+pub trait GPUDeviceZerosShape<T>: Shape where T: Copy {
+  fn zeros(shape: Self::Shape, conn: GPUDeviceConn) -> Self where Self: Sized;
+  fn zeros_with_alloc<Alloc>(allocator: Alloc, shape: Self::Shape, conn: GPUDeviceConn) -> Self where Self: Sized, T: Copy + 'static, Alloc: GPUDeviceAlloc<T> + Sized;
 }
 
-pub trait GPUDeviceBatchArrayZeros: BatchArray {
+pub trait GPUDeviceArrayZeros<T>: Array where T: Copy {
+  fn zeros(size: Self::Idx, conn: GPUDeviceConn) -> Self where Self: Sized;
+  fn zeros_with_alloc<Alloc>(allocator: Alloc, size: Self::Idx, conn: GPUDeviceConn) -> Self where Self: Sized, T: Copy + 'static, Alloc: GPUDeviceAlloc<T> + Sized;
+}
+
+pub trait GPUDeviceBatchArrayZeros<T>: BatchArray where T: Copy {
   fn zeros(size: Self::Idx, batch_sz: usize, conn: GPUDeviceConn) -> Self where Self: Sized;
   //fn zeros_with_storage(size: Self::Idx, batch_sz: usize, mem: Arc<GPUDeviceMem<T>>, conn: GPUDeviceConn) -> Self where Self: Sized;
 }
+
+pub type GPUHostScalar<T>  = GPUHostArray0d<T>;
+pub type GPUHostArray0d<T> = MemArray<Index0d, T, GPUHostMem<T>>;
+pub type GPUHostArray1d<T> = MemArray<Index1d, T, GPUHostMem<T>>;
+pub type GPUHostArray2d<T> = MemArray<Index2d, T, GPUHostMem<T>>;
+pub type GPUHostArray3d<T> = MemArray<Index3d, T, GPUHostMem<T>>;
+pub type GPUHostArray4d<T> = MemArray<Index4d, T, GPUHostMem<T>>;
 
 #[derive(Clone)]
 pub struct GPUDeviceArray<Idx, T> where T: Copy {
@@ -81,10 +92,10 @@ pub struct GPUDeviceArray<Idx, T> where T: Copy {
   offset:   Idx,
   stride:   Idx,
   mem:      Arc<GPUDeviceMem<T>>,
-  //mem:      Arc<Mutex<GPUDeviceMem<T>>>,
 }
 
-pub type GPUDeviceScalar<T>  = GPUDeviceArray<Index0d, T>;
+pub type GPUDeviceScalar<T>  = GPUDeviceArray0d<T>;
+pub type GPUDeviceArray0d<T> = GPUDeviceArray<Index0d, T>;
 pub type GPUDeviceArray1d<T> = GPUDeviceArray<Index1d, T>;
 pub type GPUDeviceArray2d<T> = GPUDeviceArray<Index2d, T>;
 pub type GPUDeviceArray3d<T> = GPUDeviceArray<Index3d, T>;
@@ -312,14 +323,15 @@ impl<Idx, T> GPUDeviceOuterBatchArray<Idx, T> where Idx: ArrayIndex, T: Copy + '
   }
 }
 
-impl<Idx, T> GPUDeviceBatchArrayZeros for GPUDeviceOuterBatchArray<Idx, T>
+impl<Idx, T> GPUDeviceBatchArrayZeros<T> for GPUDeviceOuterBatchArray<Idx, T>
 where Idx: ArrayIndex,
       T: ZeroBits + Copy + 'static,
-      GPUDeviceArrayViewMut<Idx::Above, T>: GPUDeviceArrayViewMutOpsExt,
+      //GPUDeviceArrayViewMut<Idx::Above, T>: GPUDeviceArrayViewMutOpsExt,
 {
   fn zeros(size: Idx, max_batch_sz: usize, conn: GPUDeviceConn) -> Self {
     let mut arr = unsafe { GPUDeviceOuterBatchArray::<Idx, T>::alloc_default(size, max_batch_sz, conn.clone()) };
-    arr.as_view_mut().set_zeros(conn);
+    /*arr.as_view_mut().set_zeros(conn);*/
+    arr.flat_view_mut().unwrap().set_zeros(conn);
     arr
   }
 }
@@ -508,7 +520,7 @@ impl<T> GPUDeviceArrayView1d<T> where T: Copy {
 }
 
 impl<Idx, T> GPUDeviceArrayView<Idx, T> where Idx: ArrayIndex, T: Copy {
-  pub fn sync_dump_mem(&self, dst: MemArrayViewMut<Idx, T>, conn: GPUDeviceConn) {
+  pub fn sync_dump_mem(&self, mut dst: MemArrayViewMut<Idx, T>, conn: GPUDeviceConn) {
     assert_eq!(self.size, dst.size());
     if self.is_packed() && dst.is_packed() {
       let len = self.size.flat_len();
