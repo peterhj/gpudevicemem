@@ -354,9 +354,34 @@ impl<'a> GPUDeviceConn<'a> {
   }
 }
 
-thread_local! {
-  static SECTION_STACK: RefCell<Vec<Rc<RefCell<GPUAsyncSectionState>>>> = RefCell::new(Vec::new());
+#[derive(Clone)]
+pub struct GPUAsyncTicket {
+  event:    Arc<Mutex<CudaEvent>>,
+  //stream:   Arc<Mutex<CudaStream>>,
+  e_uid:    usize,
+  s_uid:    usize,
 }
+
+#[derive(Default)]
+pub struct GPUAsyncState {
+  tick: Option<GPUAsyncTicket>,
+}
+
+impl GPUAsyncState {
+  pub fn swap_ticket(&mut self, ticket: GPUAsyncTicket) -> Option<GPUAsyncTicket> {
+    let prev_tick = self.tick.take();
+    self.tick = Some(ticket);
+    prev_tick
+  }
+
+  pub fn take_ticket(&mut self) -> Option<GPUAsyncTicket> {
+    self.tick.take()
+  }
+}
+
+/*thread_local! {
+  static SECTION_STACK: RefCell<Vec<Rc<RefCell<GPUAsyncSectionState>>>> = RefCell::new(Vec::new());
+}*/
 
 struct ArcKey<T: ?Sized>(pub Arc<T>);
 
@@ -374,36 +399,6 @@ impl<T: ?Sized> Hash for ArcKey<T> {
     let ptr: *const T = &*self.0;
     ptr.hash(state);
   }
-}
-
-#[derive(Default)]
-struct GPUAsyncSectionState {
-  wait_keys:    HashSet<(usize, usize)>,
-  reg_data:     HashSet<ArcKey<Mutex<GPUAsyncState>>>,
-}
-
-impl GPUAsyncSectionState {
-  pub fn wait_ticket(&mut self, ticket: GPUAsyncTicket, conn: GPUDeviceConn) {
-    let key = (ticket.e_uid, ticket.s_uid);
-    if !self.wait_keys.contains(&key) {
-      if conn.cuda_stream_uid() != ticket.s_uid {
-        assert!(conn.cuda_stream().wait_event(&mut *ticket.event.lock()).is_ok());
-      }
-      self.wait_keys.insert(key);
-    }
-  }
-
-  pub fn register(&mut self, data: Arc<Mutex<GPUAsyncState>>) {
-    self.reg_data.insert(ArcKey(data));
-  }
-}
-
-#[derive(Clone)]
-pub struct GPUAsyncTicket {
-  event:    Arc<Mutex<CudaEvent>>,
-  //stream:   Arc<Mutex<CudaStream>>,
-  e_uid:    usize,
-  s_uid:    usize,
 }
 
 pub struct GPULazyAsyncSection {
@@ -470,6 +465,27 @@ impl GPUAsyncSection {
   }
 }
 
+#[derive(Default)]
+struct GPUAsyncSectionState {
+  wait_keys:    HashSet<(usize, usize)>,
+  reg_data:     HashSet<ArcKey<Mutex<GPUAsyncState>>>,
+}
+
+impl GPUAsyncSectionState {
+  pub fn wait_ticket(&mut self, ticket: GPUAsyncTicket, conn: GPUDeviceConn) {
+    let key = (ticket.e_uid, ticket.s_uid);
+    if self.wait_keys.insert(key) {
+      if conn.cuda_stream_uid() != ticket.s_uid {
+        assert!(conn.cuda_stream().wait_event(&mut *ticket.event.lock()).is_ok());
+      }
+    }
+  }
+
+  pub fn register(&mut self, data: Arc<Mutex<GPUAsyncState>>) {
+    self.reg_data.insert(ArcKey(data));
+  }
+}
+
 pub struct GPUAsyncSectionGuard<'a> {
   event:    MutexGuard<'a, CudaEvent>,
   conn:     GPUDeviceConn<'a>,
@@ -493,8 +509,8 @@ impl<'a> Drop for GPUAsyncSectionGuard<'a> {
 
     // Post ticket to each registered data.
     for data in self.state.reg_data.drain() {
-      let old_tick = data.0.lock().put_ticket(ticket.clone());
-      assert!(old_tick.is_none());
+      let prev_tick = data.0.lock().swap_ticket(ticket.clone());
+      assert!(prev_tick.is_none());
     }
   }
 }
@@ -511,23 +527,6 @@ impl<'a> GPUAsyncSectionGuard<'a> {
 
     // Register the data for a future post.
     self.state.register(data);
-  }
-}
-
-#[derive(Default)]
-pub struct GPUAsyncState {
-  tick: Option<GPUAsyncTicket>,
-}
-
-impl GPUAsyncState {
-  pub fn put_ticket(&mut self, ticket: GPUAsyncTicket) -> Option<GPUAsyncTicket> {
-    let prev_tick = self.tick.take();
-    self.tick = Some(ticket);
-    prev_tick
-  }
-
-  pub fn take_ticket(&mut self) -> Option<GPUAsyncTicket> {
-    self.tick.take()
   }
 }
 

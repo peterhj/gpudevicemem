@@ -37,7 +37,48 @@ public:
 };
 
 template <typename T, typename Map, typename Reduce>
-__global__ void gpudevicemem_map_reduce_Iab_Ob_packed_deterministic_kernel(
+__global__ void gpudevicemem_map_reduce_I1ab_Oa_packed_deterministic_kernel(
+    uint32_t inner_dim,
+    uint32_t reduce_dim,
+    const T *x,
+    T *y)
+{
+  extern __shared__ T cache[];
+  uint32_t rdup_reduce_dim = (reduce_dim + blockDim.x - 1) / blockDim.x * blockDim.x;
+  for (uint32_t blk = gblock(); blk < inner_dim; blk += gblockcount()) {
+    T accumulator = Reduce::InitVal();
+    for (uint32_t i = threadIdx.x; i < rdup_reduce_dim; i += blockDim.x) {
+      if (i < reduce_dim) {
+        cache[threadIdx.x] = Map::Map(x[Index2::Pack(blk, inner_dim, i)]);
+      } else {
+        cache[threadIdx.x] = Reduce::InitVal();
+      }
+      __syncthreads();
+      threadblock_reduce_sync<T, Reduce>(cache);
+      if (0 == threadIdx.x) {
+        Reduce::Reduce(&accumulator, cache[0]);
+      }
+      __syncthreads();
+    }
+    y[blk] = accumulator;
+  }
+}
+
+extern "C" void gpudevicemem_sum_I1ab_Oa_packed_deterministic_f32(
+    uint32_t inner_dim,
+    uint32_t reduce_dim,
+    const float *x,
+    float *y,
+    const KernelConfig *cfg,
+    cudaStream_t stream)
+{
+  assert(check_power_of_2(cfg->flat_block_dim().x));
+  gpudevicemem_map_reduce_I1ab_Oa_packed_deterministic_kernel<float, CopyMap<float>, AddReduce<float>><<<cfg->flat_block_count(inner_dim), cfg->flat_block_dim(), cfg->flat_block_len() * sizeof(float), stream>>>(
+      inner_dim, reduce_dim, x, y);
+}
+
+template <typename T, typename Map, typename Reduce>
+__global__ void gpudevicemem_map_reduce_I1ab_Ob_packed_deterministic_kernel(
     uint32_t reduce_dim,
     uint32_t outer_dim,
     const T *x,
@@ -64,7 +105,7 @@ __global__ void gpudevicemem_map_reduce_Iab_Ob_packed_deterministic_kernel(
   }
 }
 
-extern "C" void gpudevicemem_sum_Iab_Ob_packed_deterministic_f32(
+extern "C" void gpudevicemem_sum_I1ab_Ob_packed_deterministic_f32(
     uint32_t reduce_dim,
     uint32_t outer_dim,
     const float *x,
@@ -73,12 +114,12 @@ extern "C" void gpudevicemem_sum_Iab_Ob_packed_deterministic_f32(
     cudaStream_t stream)
 {
   assert(check_power_of_2(cfg->flat_block_dim().x));
-  gpudevicemem_map_reduce_Iab_Ob_packed_deterministic_kernel<float, CopyMap<float>, AddReduce<float>><<<cfg->flat_block_count(outer_dim), cfg->flat_block_dim(), cfg->flat_block_len() * sizeof(float), stream>>>(
+  gpudevicemem_map_reduce_I1ab_Ob_packed_deterministic_kernel<float, CopyMap<float>, AddReduce<float>><<<cfg->flat_block_count(outer_dim), cfg->flat_block_dim(), cfg->flat_block_len() * sizeof(float), stream>>>(
       reduce_dim, outer_dim, x, y);
 }
 
 template <typename T, typename Map, typename Reduce>
-__global__ void gpudevicemem_map_reduce_Iabc_Ob_packed_deterministic_kernel(
+__global__ void gpudevicemem_map_reduce_I1abc_Ob_packed_deterministic_kernel(
     uint32_t reduce_inner_dim,
     uint32_t mid_dim,
     uint32_t reduce_outer_dim,
@@ -109,7 +150,7 @@ __global__ void gpudevicemem_map_reduce_Iabc_Ob_packed_deterministic_kernel(
 }
 
 template <typename T, typename Map, typename Reduce>
-__global__ void gpudevicemem_map_reduce_Iabc_Ob_packed_deterministic_v2_kernel(
+__global__ void gpudevicemem_map_reduce_I1abc_Ob_packed_deterministic_v2_kernel(
     uint32_t reduce_inner_dim,
     uint32_t mid_dim,
     uint32_t reduce_outer_dim,
@@ -140,7 +181,7 @@ __global__ void gpudevicemem_map_reduce_Iabc_Ob_packed_deterministic_v2_kernel(
   }
 }
 
-extern "C" void gpudevicemem_sum_Iabc_Ob_packed_deterministic_f32(
+extern "C" void gpudevicemem_sum_I1abc_Ob_packed_deterministic_f32(
     uint32_t reduce_inner_dim,
     uint32_t mid_dim,
     uint32_t reduce_outer_dim,
@@ -150,11 +191,11 @@ extern "C" void gpudevicemem_sum_Iabc_Ob_packed_deterministic_f32(
     cudaStream_t stream)
 {
   assert(check_power_of_2(cfg->flat_block_dim().x));
-  gpudevicemem_map_reduce_Iabc_Ob_packed_deterministic_v2_kernel<float, CopyMap<float>, AddReduce<float>><<<cfg->flat_block_count(mid_dim), cfg->flat_block_dim(), cfg->flat_block_len() * sizeof(float), stream>>>(
+  gpudevicemem_map_reduce_I1abc_Ob_packed_deterministic_v2_kernel<float, CopyMap<float>, AddReduce<float>><<<cfg->flat_block_count(mid_dim), cfg->flat_block_dim(), cfg->flat_block_len() * sizeof(float), stream>>>(
       reduce_inner_dim, mid_dim, reduce_outer_dim, x, y);
 }
 
-extern "C" void gpudevicemem_square_map_sum_Iabc_Ob_packed_deterministic_f32(
+extern "C" void gpudevicemem_square_map_sum_I1abc_Ob_packed_deterministic_f32(
     uint32_t reduce_inner_dim,
     uint32_t mid_dim,
     uint32_t reduce_outer_dim,
@@ -164,6 +205,6 @@ extern "C" void gpudevicemem_square_map_sum_Iabc_Ob_packed_deterministic_f32(
     cudaStream_t stream)
 {
   assert(check_power_of_2(cfg->flat_block_dim().x));
-  gpudevicemem_map_reduce_Iabc_Ob_packed_deterministic_v2_kernel<float, SquareMap<float>, AddReduce<float>><<<cfg->flat_block_count(mid_dim), cfg->flat_block_dim(), cfg->flat_block_len() * sizeof(float), stream>>>(
+  gpudevicemem_map_reduce_I1abc_Ob_packed_deterministic_v2_kernel<float, SquareMap<float>, AddReduce<float>><<<cfg->flat_block_count(mid_dim), cfg->flat_block_dim(), cfg->flat_block_len() * sizeof(float), stream>>>(
       reduce_inner_dim, mid_dim, reduce_outer_dim, x, y);
 }

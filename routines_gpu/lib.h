@@ -29,6 +29,38 @@ struct CUstream_st;
 
 // "bcast_flat_linear.cu"
 
+void gpudevicemem_bcast_flat_add_I1a_I2ab_Oab_packed_f32(
+    uint32_t bcast_dim,
+    uint32_t outer_dim,
+    const float *lx,
+    const float *rx,
+    float *y,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream);
+void gpudevicemem_bcast_flat_add_I1a_IO2ab_inplace_packed_f32(
+    uint32_t bcast_dim,
+    uint32_t outer_dim,
+    const float *lx,
+    float *rx,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream);
+void gpudevicemem_bcast_flat_add_I1b_I2abc_Oabc_packed_f32(
+    uint32_t inner_dim,
+    uint32_t bcast_dim,
+    uint32_t outer_dim,
+    const float *lx,
+    const float *rx,
+    float *y,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream);
+void gpudevicemem_bcast_flat_add_I1b_IO2abc_inplace_packed_f32(
+    uint32_t inner_dim,
+    uint32_t bcast_dim,
+    uint32_t outer_dim,
+    const float *lx,
+    float *rx,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream);
 void gpudevicemem_bcast_flat_mult_I1b_I2ab_Oab_packed_f32(
     uint32_t inner_dim,
     uint32_t bcast_dim,
@@ -155,14 +187,21 @@ void gpudevicemem_rcosh2_flat_map_f32(
 
 // "reduce.cu"
 
-void gpudevicemem_sum_Iab_Ob_packed_deterministic_f32(
+void gpudevicemem_sum_I1ab_Oa_packed_deterministic_f32(
+    uint32_t inner_dim,
+    uint32_t reduce_dim,
+    const float *x,
+    float *y,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream);
+void gpudevicemem_sum_I1ab_Ob_packed_deterministic_f32(
     uint32_t reduce_dim,
     uint32_t outer_dim,
     const float *x,
     float *y,
     const struct KernelConfig *cfg,
     struct CUstream_st *stream);
-void gpudevicemem_sum_Iabc_Ob_packed_deterministic_f32(
+void gpudevicemem_sum_I1abc_Ob_packed_deterministic_f32(
     uint32_t reduce_inner_dim,
     uint32_t mid_dim,
     uint32_t reduce_outer_dim,
@@ -170,7 +209,7 @@ void gpudevicemem_sum_Iabc_Ob_packed_deterministic_f32(
     float *y,
     const struct KernelConfig *cfg,
     struct CUstream_st *stream);
-void gpudevicemem_square_sum_Iabc_Ob_packed_deterministic_f32(
+void gpudevicemem_square_sum_I1abc_Ob_packed_deterministic_f32(
     uint32_t reduce_inner_dim,
     uint32_t mid_dim,
     uint32_t reduce_outer_dim,

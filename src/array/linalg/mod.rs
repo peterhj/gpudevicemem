@@ -27,7 +27,15 @@ fn sz2int(sz: usize) -> i32 {
   sz as _
 }
 
+#[inline]
+fn sz2uint(sz: usize) -> u32 {
+  assert!(sz <= u32::max_value() as _);
+  sz as _
+}
+
 pub trait GPUVectorOps<T> where T: Copy {
+  fn reduce_sum(&mut self, x: GPUDeviceArrayView2d<T>, axis: isize, conn: GPUDeviceConn);
+
   fn matrix_vector_mult(&mut self,
       w: GPUDeviceArrayView2d<T>,
       x: GPUDeviceArrayView1d<T>,
@@ -35,6 +43,39 @@ pub trait GPUVectorOps<T> where T: Copy {
 }
 
 impl GPUVectorOps<f32> for GPUDeviceArrayViewMut1d<f32> {
+  fn reduce_sum(&mut self, x: GPUDeviceArrayView2d<f32>, axis: isize, conn: GPUDeviceConn) {
+    if self.is_packed() {
+      let mut stream = conn.cuda_stream();
+      match axis {
+        0 => {
+          assert_eq!(self.size(), x.size()[1]);
+          unsafe { gpudevicemem_sum_I1ab_Ob_packed_deterministic_f32(
+              sz2uint(x.size()[0]),
+              sz2uint(x.size()[1]),
+              x.as_dptr(),
+              self.as_mut_dptr(),
+              conn.cuda_kernel_cfg() as *const _,
+              stream.as_mut_ptr(),
+          ) };
+        }
+        1 => {
+          assert_eq!(self.size(), x.size()[0]);
+          unsafe { gpudevicemem_sum_I1ab_Oa_packed_deterministic_f32(
+              sz2uint(x.size()[0]),
+              sz2uint(x.size()[1]),
+              x.as_dptr(),
+              self.as_mut_dptr(),
+              conn.cuda_kernel_cfg() as *const _,
+              stream.as_mut_ptr(),
+          ) };
+        }
+        _ => unreachable!(),
+      }
+    } else {
+      unimplemented!();
+    }
+  }
+
   fn matrix_vector_mult(&mut self,
       w: GPUDeviceArrayView2d<f32>,
       x: GPUDeviceArrayView1d<f32>,
@@ -77,6 +118,8 @@ where T: Copy,
 }
 
 pub trait GPUMatrixOps<T> where T: Copy {
+  fn broadcast_add_vector_inplace(&mut self, x: GPUDeviceArrayView1d<T>, axis: isize, conn: GPUDeviceConn);
+
   fn matrix_mult(&mut self,
       w: GPUDeviceArrayView2d<T>,
       x: GPUDeviceArrayView2d<T>,
@@ -92,6 +135,32 @@ pub trait GPUMatrixOps<T> where T: Copy {
 }
 
 impl GPUMatrixOps<f32> for GPUDeviceArrayViewMut2d<f32> {
+  fn broadcast_add_vector_inplace(&mut self, x: GPUDeviceArrayView1d<f32>, axis: isize, conn: GPUDeviceConn) {
+    if self.is_packed() && x.is_packed() {
+      let mut stream = conn.cuda_stream();
+      match axis {
+        0 => {
+          assert_eq!(x.size(), self.size()[0]);
+          unsafe { gpudevicemem_bcast_flat_add_I1a_IO2ab_inplace_packed_f32(
+              sz2uint(self.size()[0]),
+              sz2uint(self.size()[1]),
+              x.as_dptr(),
+              self.as_mut_dptr(),
+              conn.cuda_kernel_cfg() as *const _,
+              stream.as_mut_ptr(),
+          ) };
+        }
+        1 => {
+          // TODO
+          unimplemented!();
+        }
+        _ => unreachable!(),
+      }
+    } else {
+      unimplemented!();
+    }
+  }
+
   fn matrix_mult(&mut self,
       w: GPUDeviceArrayView2d<f32>,
       x: GPUDeviceArrayView2d<f32>,
@@ -195,7 +264,7 @@ impl GPUMatrixOps<f32> for GPUDeviceArrayViewMut2d<f32> {
   }
 }
 
-pub fn gpu_matrix_mult<T>(
+/*pub fn gpu_matrix_mult<T>(
     w: GPUDeviceArrayView2d<T>,
     x: GPUDeviceArrayView2d<T>,
     mut y: GPUDeviceArrayViewMut2d<T>,
@@ -226,4 +295,57 @@ where T: Copy,
       GPUDeviceArrayViewMut2d<T>: GPUMatrixOps<T>
 {
   w.right_transpose_matrix_mult(y, x, conn);
+}*/
+
+pub trait GPUTensorOps<T> where T: Copy {
+  fn broadcast_add_1d_inplace(&mut self, x: GPUDeviceArrayView1d<T>, axis: isize, conn: GPUDeviceConn);
+}
+
+impl GPUTensorOps<f32> for GPUDeviceArrayViewMut4d<f32> {
+  fn broadcast_add_1d_inplace(&mut self, x: GPUDeviceArrayView1d<f32>, axis: isize, conn: GPUDeviceConn) {
+    if self.is_packed() && x.is_packed() {
+      let mut stream = conn.cuda_stream();
+      match axis {
+        0 => {
+          unsafe { gpudevicemem_bcast_flat_add_I1a_IO2ab_inplace_packed_f32(
+              sz2uint(self.size()[0]),
+              sz2uint(self.size()[1] * self.size()[2] * self.size()[3]),
+              x.as_dptr(),
+              self.as_mut_dptr(),
+              conn.cuda_kernel_cfg() as *const _,
+              stream.as_mut_ptr(),
+          ) };
+        }
+        1 => {
+          unsafe { gpudevicemem_bcast_flat_add_I1b_IO2abc_inplace_packed_f32(
+              sz2uint(self.size()[0]),
+              sz2uint(self.size()[1]),
+              sz2uint(self.size()[2] * self.size()[3]),
+              x.as_dptr(),
+              self.as_mut_dptr(),
+              conn.cuda_kernel_cfg() as *const _,
+              stream.as_mut_ptr(),
+          ) };
+        }
+        2 => {
+          unsafe { gpudevicemem_bcast_flat_add_I1b_IO2abc_inplace_packed_f32(
+              sz2uint(self.size()[0] * self.size()[1]),
+              sz2uint(self.size()[2]),
+              sz2uint(self.size()[3]),
+              x.as_dptr(),
+              self.as_mut_dptr(),
+              conn.cuda_kernel_cfg() as *const _,
+              stream.as_mut_ptr(),
+          ) };
+        }
+        3 => {
+          // TODO
+          unimplemented!();
+        }
+        _ => unreachable!(),
+      }
+    } else {
+      unimplemented!();
+    }
+  }
 }

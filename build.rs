@@ -53,6 +53,10 @@ fn main() {
     .header("routines_gpu/lib.h")
     .whitelist_recursively(false)
     // "bcast_flat_linear.cu"
+    .whitelist_function("gpudevicemem_bcast_flat_add_I1a_I2ab_Oab_packed_f32")
+    .whitelist_function("gpudevicemem_bcast_flat_add_I1a_IO2ab_inplace_packed_f32")
+    .whitelist_function("gpudevicemem_bcast_flat_add_I1b_I2abc_Oabc_packed_f32")
+    .whitelist_function("gpudevicemem_bcast_flat_add_I1b_IO2abc_inplace_packed_f32")
     .whitelist_function("gpudevicemem_bcast_flat_mult_I1b_I2ab_Oab_packed_f32")
     .whitelist_function("gpudevicemem_bcast_flat_mult_add_I1b_I2ab_I3b_Oab_packed_f32")
     .whitelist_function("gpudevicemem_bcast_flat_mult_I1b_I2abc_Oabc_packed_f32")
@@ -64,6 +68,7 @@ fn main() {
     .whitelist_function("gpudevicemem_set_constant_flat_map_f32")
     .whitelist_function("gpudevicemem_mult_constant_flat_map_f32")
     // "reduce.cu"
+    .whitelist_function("gpudevicemem_sum_I1ab_Oa_packed_deterministic_f32")
     .whitelist_function("gpudevicemem_sum_I1ab_Ob_packed_deterministic_f32")
     //.whitelist_function("gpudevicemem_square_sum_I1ab_Ob_packed_deterministic_f32")
     .whitelist_function("gpudevicemem_sum_I1abc_Ob_packed_deterministic_f32")
