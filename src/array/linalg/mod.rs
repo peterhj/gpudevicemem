@@ -19,8 +19,6 @@ use ::array::*;
 
 use cuda_blas::*;
 
-pub mod conv;
-
 #[inline]
 fn sz2int(sz: usize) -> i32 {
   assert!(sz <= i32::max_value() as _);

@@ -28,6 +28,7 @@ use std::mem::{size_of};
 use std::sync::{Arc};
 
 pub mod linalg;
+pub mod tensor;
 
 //pub struct BatchWrap<T>(pub T);
 
