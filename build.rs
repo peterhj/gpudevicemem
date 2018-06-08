@@ -44,6 +44,7 @@ fn main() {
     .file("routines_gpu/bcast_flat_linear.cu")
     .file("routines_gpu/flat_linear.cu")
     .file("routines_gpu/flat_map.cu")
+    .file("routines_gpu/halo.cu")
     .file("routines_gpu/reduce.cu")
     .compile("libgpudevicemem_routines_gpu.a");
 
@@ -67,6 +68,16 @@ fn main() {
     // "flat_map.cu"
     .whitelist_function("gpudevicemem_set_constant_flat_map_f32")
     .whitelist_function("gpudevicemem_mult_constant_flat_map_f32")
+    // "halo.cu"
+    .whitelist_function("gpudevicemem_halo_expand_packed3d1_f32")
+    .whitelist_function("gpudevicemem_halo_project_packed3d1_f32")
+    .whitelist_function("gpudevicemem_halo_set_constant_3d1_f32")
+    .whitelist_function("gpudevicemem_halo_pack_3d1_f32")
+    .whitelist_function("gpudevicemem_halo_pack_lo_3d1_f32")
+    .whitelist_function("gpudevicemem_halo_pack_hi_3d1_f32")
+    .whitelist_function("gpudevicemem_halo_unpack_3d1_f32")
+    .whitelist_function("gpudevicemem_halo_unpack_lo_3d1_f32")
+    .whitelist_function("gpudevicemem_halo_unpack_hi_3d1_f32")
     // "reduce.cu"
     .whitelist_function("gpudevicemem_sum_I1ab_Oa_packed_deterministic_f32")
     .whitelist_function("gpudevicemem_sum_I1ab_Ob_packed_deterministic_f32")

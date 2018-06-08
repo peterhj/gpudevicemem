@@ -185,6 +185,132 @@ void gpudevicemem_rcosh2_flat_map_f32(
     const struct KernelConfig *cfg,
     struct CUstream_st *stream);*/
 
+// "halo.cu"
+
+void gpudevicemem_halo_set_constant_3d1_f32(
+    uint32_t ax0_size,
+    uint32_t ax0_offset,
+    uint32_t ax0_stride,
+    uint32_t ax1_size,
+    uint32_t ax1_offset,
+    uint32_t ax1_stride,
+    uint32_t ax2_size,
+    uint32_t ax2_offset,
+    uint32_t ax2_stride,
+    uint32_t halo_size,
+    float c,
+    float *y,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream);
+void gpudevicemem_halo_expand_packed3d1_f32(
+    uint32_t ax0_size,
+    uint32_t ax1_size,
+    uint32_t ax2_size,
+    uint32_t halo_size,
+    const float *x,
+    float *y,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream);
+void gpudevicemem_halo_project_packed3d1_f32(
+    uint32_t ax0_size,
+    uint32_t ax1_size,
+    uint32_t ax2_size,
+    uint32_t halo_size,
+    const float *x,
+    float *y,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream);
+void gpudevicemem_halo_pack_3d1_f32(
+    uint32_t ax0_size,
+    uint32_t ax0_offset,
+    uint32_t ax0_stride,
+    uint32_t ax1_size,
+    uint32_t ax1_offset,
+    uint32_t ax1_stride,
+    uint32_t ax2_size,
+    uint32_t ax2_offset,
+    uint32_t ax2_stride,
+    uint32_t halo_size,
+    const float *x,
+    float *y,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream);
+void gpudevicemem_halo_pack_lo_3d1_f32(
+    uint32_t ax0_size,
+    uint32_t ax0_offset,
+    uint32_t ax0_stride,
+    uint32_t ax1_size,
+    uint32_t ax1_offset,
+    uint32_t ax1_stride,
+    uint32_t ax2_size,
+    uint32_t ax2_offset,
+    uint32_t ax2_stride,
+    uint32_t halo_size,
+    const float *x,
+    float *y,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream);
+void gpudevicemem_halo_pack_hi_3d1_f32(
+    uint32_t ax0_size,
+    uint32_t ax0_offset,
+    uint32_t ax0_stride,
+    uint32_t ax1_size,
+    uint32_t ax1_offset,
+    uint32_t ax1_stride,
+    uint32_t ax2_size,
+    uint32_t ax2_offset,
+    uint32_t ax2_stride,
+    uint32_t halo_size,
+    const float *x,
+    float *y,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream);
+void gpudevicemem_halo_unpack_3d1_f32(
+    uint32_t ax0_size,
+    uint32_t ax0_offset,
+    uint32_t ax0_stride,
+    uint32_t ax1_size,
+    uint32_t ax1_offset,
+    uint32_t ax1_stride,
+    uint32_t ax2_size,
+    uint32_t ax2_offset,
+    uint32_t ax2_stride,
+    uint32_t halo_size,
+    const float *x,
+    float *y,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream);
+void gpudevicemem_halo_unpack_lo_3d1_f32(
+    uint32_t ax0_size,
+    uint32_t ax0_offset,
+    uint32_t ax0_stride,
+    uint32_t ax1_size,
+    uint32_t ax1_offset,
+    uint32_t ax1_stride,
+    uint32_t ax2_size,
+    uint32_t ax2_offset,
+    uint32_t ax2_stride,
+    uint32_t halo_size,
+    const float *x,
+    float *y,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream);
+void gpudevicemem_halo_unpack_hi_3d1_f32(
+    uint32_t ax0_size,
+    uint32_t ax0_offset,
+    uint32_t ax0_stride,
+    uint32_t ax1_size,
+    uint32_t ax1_offset,
+    uint32_t ax1_stride,
+    uint32_t ax2_size,
+    uint32_t ax2_offset,
+    uint32_t ax2_stride,
+    uint32_t halo_size,
+    const float *x,
+    float *y,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream);
+
 // "reduce.cu"
 
 void gpudevicemem_sum_I1ab_Oa_packed_deterministic_f32(
