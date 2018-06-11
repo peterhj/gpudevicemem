@@ -116,7 +116,7 @@ void gpudevicemem_flat_mult_add_f32(
     struct CUstream_st *stream);
 
 // "flat_map.cu"
-void gpudevicemem_set_constant_flat_map_f32(
+void gpudevicemem_set_constant_flat_map_inplace_f32(
     uint32_t len,
     float c,
     float *y,

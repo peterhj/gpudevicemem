@@ -65,7 +65,7 @@ fn main() {
     .whitelist_function("gpudevicemem_flat_mult_f32")
     .whitelist_function("gpudevicemem_flat_mult_add_f32")
     // "flat_map.cu"
-    .whitelist_function("gpudevicemem_set_constant_flat_map_f32")
+    .whitelist_function("gpudevicemem_set_constant_flat_map_inplace_f32")
     .whitelist_function("gpudevicemem_mult_constant_flat_map_f32")
     // "reduce.cu"
     .whitelist_function("gpudevicemem_sum_I1ab_Oa_packed_deterministic_f32")

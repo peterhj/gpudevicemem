@@ -755,7 +755,7 @@ impl<Idx> GPUDeviceArrayViewMutConstantOpsExt<f32> for GPUDeviceArrayViewMut<Idx
       let len = self.size.flat_len();
       // TODO: error handling.
       let mut stream = conn.cuda_stream();
-      unsafe { gpudevicemem_set_constant_flat_map_f32(
+      unsafe { gpudevicemem_set_constant_flat_map_inplace_f32(
           len as _,
           c,
           self.as_mut_dptr(),
