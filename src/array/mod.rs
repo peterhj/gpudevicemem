@@ -28,6 +28,7 @@ use std::mem::{size_of};
 use std::sync::{Arc};
 
 pub mod linalg;
+pub mod parallel;
 pub mod tensor;
 
 //pub struct BatchWrap<T>(pub T);
@@ -570,6 +571,16 @@ impl<Idx, T> GPUDeviceArrayViewMut<Idx, T> where Idx: ArrayIndex, T: Copy {
   pub unsafe fn as_mut_dptr(&self) -> *mut T {
     self.base.offset(self.flat_offset() as _)
   }
+
+  pub fn to_view(&self) -> GPUDeviceArrayView<Idx, T> {
+    GPUDeviceArrayView{
+      base:     self.base,
+      size:     self.size.clone(),
+      offset:   self.offset.clone(),
+      stride:   self.stride.clone(),
+      mem:      self.mem.clone(),
+    }
+  }
 }
 
 impl<Idx, T> GPUDevicePlace for GPUDeviceArrayViewMut<Idx, T> where Idx: ArrayIndex, T: Copy {
@@ -676,13 +687,25 @@ impl<Idx, T> GPUDeviceArrayViewMutOpsExt for GPUDeviceArrayViewMut<Idx, T> where
     if self.is_packed() && src.is_packed() {
       let len = self.size.flat_len();
       let mut stream = conn.cuda_stream();
-      match unsafe { cuda_memcpy_async(
-          self.as_mut_dptr(),
-          src.as_dptr(),
-          len,
-          CudaMemcpyKind::DeviceToDevice,
-          &mut stream,
-      ) } {
+      let status = if self.device() == src.device() {
+        unsafe { cuda_memcpy_async(
+            self.as_mut_dptr(),
+            src.as_dptr(),
+            len,
+            CudaMemcpyKind::DeviceToDevice,
+            &mut stream,
+        ) }
+      } else {
+        unsafe { cuda_memcpy_peer_async(
+            self.as_mut_dptr(),
+            self.device().0,
+            src.as_dptr(),
+            src.device().0,
+            len,
+            &mut stream,
+        ) }
+      };
+      match status {
         Err(_) => panic!(),
         Ok(_) => {}
       }

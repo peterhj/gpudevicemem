@@ -85,6 +85,246 @@ __global__ void gpudevicemem_halo_project_packed3d1_kernel(
 }
 
 template <typename T>
+__global__ void gpudevicemem_halo_pack_lo_packed3d1_kernel(
+    uint32_t len,
+    uint32_t ax0_size,
+    uint32_t ax1_size,
+    uint32_t ax2_size,
+    uint32_t halo_size,
+    const T *x,
+    T *y)
+{
+  for (uint32_t idx = gtindex(); idx < len; idx += gtcount()) {
+    uint32_t i0, i1, i2;
+    Index3::Unpack(
+        idx,
+        &i0, ax0_size,
+        &i1, halo_size,
+        &i2
+    );
+    if (i0 < ax0_size && i1 < halo_size && i2 < ax2_size) {
+      uint32_t src_i1 = i1 + halo_size;
+      uint32_t src_idx = Index3::Pack(
+          i0, ax0_size,
+          src_i1, ax1_size + halo_size * 2,
+          i2
+      );
+      y[idx] = x[src_idx];
+    }
+  }
+}
+
+template <typename T>
+__global__ void gpudevicemem_halo_pack_hi_packed3d1_kernel(
+    uint32_t len,
+    uint32_t ax0_size,
+    uint32_t ax1_size,
+    uint32_t ax2_size,
+    uint32_t halo_size,
+    const T *x,
+    T *y)
+{
+  for (uint32_t idx = gtindex(); idx < len; idx += gtcount()) {
+    uint32_t i0, i1, i2;
+    Index3::Unpack(
+        idx,
+        &i0, ax0_size,
+        &i1, halo_size,
+        &i2
+    );
+    if (i0 < ax0_size && i1 < halo_size && i2 < ax2_size) {
+      uint32_t src_i1 = i1 + ax1_size;
+      uint32_t src_idx = Index3::Pack(
+          i0, ax0_size,
+          src_i1, ax1_size + halo_size * 2,
+          i2
+      );
+      y[idx] = x[src_idx];
+    }
+  }
+}
+
+template <typename T>
+__global__ void gpudevicemem_halo_unpack_lo_packed3d1_kernel(
+    uint32_t len,
+    uint32_t ax0_size,
+    uint32_t ax1_size,
+    uint32_t ax2_size,
+    uint32_t halo_size,
+    const T *x,
+    T *y)
+{
+  for (uint32_t idx = gtindex(); idx < len; idx += gtcount()) {
+    uint32_t i0, i1, i2;
+    Index3::Unpack(
+        idx,
+        &i0, ax0_size,
+        &i1, halo_size,
+        &i2
+    );
+    if (i0 < ax0_size && i1 < halo_size && i2 < ax2_size) {
+      uint32_t dst_i1 = i1;
+      uint32_t dst_idx = Index3::Pack(
+          i0, ax0_size,
+          dst_i1, ax1_size + halo_size * 2,
+          i2
+      );
+      y[dst_idx] = x[idx];
+    }
+  }
+}
+
+template <typename T>
+__global__ void gpudevicemem_halo_unpack_hi_packed3d1_kernel(
+    uint32_t len,
+    uint32_t ax0_size,
+    uint32_t ax1_size,
+    uint32_t ax2_size,
+    uint32_t halo_size,
+    const T *x,
+    T *y)
+{
+  for (uint32_t idx = gtindex(); idx < len; idx += gtcount()) {
+    uint32_t i0, i1, i2;
+    Index3::Unpack(
+        idx,
+        &i0, ax0_size,
+        &i1, halo_size,
+        &i2
+    );
+    if (i0 < ax0_size && i1 < halo_size && i2 < ax2_size) {
+      uint32_t dst_i1 = i1 + ax1_size + halo_size;
+      uint32_t dst_idx = Index3::Pack(
+          i0, ax0_size,
+          dst_i1, ax1_size + halo_size * 2,
+          i2
+      );
+      y[dst_idx] = x[idx];
+    }
+  }
+}
+
+template <typename T>
+__global__ void gpudevicemem_halo_ghost_pack_lo_packed3d1_kernel(
+    uint32_t len,
+    uint32_t ax0_size,
+    uint32_t ax1_size,
+    uint32_t ax2_size,
+    uint32_t halo_size,
+    const T *x,
+    T *y)
+{
+  for (uint32_t idx = gtindex(); idx < len; idx += gtcount()) {
+    uint32_t i0, i1, i2;
+    Index3::Unpack(
+        idx,
+        &i0, ax0_size,
+        &i1, halo_size,
+        &i2
+    );
+    if (i0 < ax0_size && i1 < halo_size && i2 < ax2_size) {
+      uint32_t src_i1 = i1;
+      uint32_t src_idx = Index3::Pack(
+          i0, ax0_size,
+          src_i1, ax1_size + halo_size * 2,
+          i2
+      );
+      y[idx] = x[src_idx];
+    }
+  }
+}
+
+template <typename T>
+__global__ void gpudevicemem_halo_ghost_pack_hi_packed3d1_kernel(
+    uint32_t len,
+    uint32_t ax0_size,
+    uint32_t ax1_size,
+    uint32_t ax2_size,
+    uint32_t halo_size,
+    const T *x,
+    T *y)
+{
+  for (uint32_t idx = gtindex(); idx < len; idx += gtcount()) {
+    uint32_t i0, i1, i2;
+    Index3::Unpack(
+        idx,
+        &i0, ax0_size,
+        &i1, halo_size,
+        &i2
+    );
+    if (i0 < ax0_size && i1 < halo_size && i2 < ax2_size) {
+      uint32_t src_i1 = i1 + ax1_size + halo_size;
+      uint32_t src_idx = Index3::Pack(
+          i0, ax0_size,
+          src_i1, ax1_size + halo_size * 2,
+          i2
+      );
+      y[idx] = x[src_idx];
+    }
+  }
+}
+
+template <typename T>
+__global__ void gpudevicemem_halo_edge_reduce_lo_packed3d1_kernel(
+    uint32_t len,
+    uint32_t ax0_size,
+    uint32_t ax1_size,
+    uint32_t ax2_size,
+    uint32_t halo_size,
+    const T *x,
+    T *y)
+{
+  for (uint32_t idx = gtindex(); idx < len; idx += gtcount()) {
+    uint32_t i0, i1, i2;
+    Index3::Unpack(
+        idx,
+        &i0, ax0_size,
+        &i1, halo_size,
+        &i2
+    );
+    if (i0 < ax0_size && i1 < halo_size && i2 < ax2_size) {
+      uint32_t dst_i1 = i1 + halo_size;
+      uint32_t dst_idx = Index3::Pack(
+          i0, ax0_size,
+          dst_i1, ax1_size + halo_size * 2,
+          i2
+      );
+      y[dst_idx] += x[idx];
+    }
+  }
+}
+
+template <typename T>
+__global__ void gpudevicemem_halo_edge_reduce_hi_packed3d1_kernel(
+    uint32_t len,
+    uint32_t ax0_size,
+    uint32_t ax1_size,
+    uint32_t ax2_size,
+    uint32_t halo_size,
+    const T *x,
+    T *y)
+{
+  for (uint32_t idx = gtindex(); idx < len; idx += gtcount()) {
+    uint32_t i0, i1, i2;
+    Index3::Unpack(
+        idx,
+        &i0, ax0_size,
+        &i1, halo_size,
+        &i2
+    );
+    if (i0 < ax0_size && i1 < halo_size && i2 < ax2_size) {
+      uint32_t dst_i1 = i1 + ax1_size;
+      uint32_t dst_idx = Index3::Pack(
+          i0, ax0_size,
+          dst_i1, ax1_size + halo_size * 2,
+          i2
+      );
+      y[dst_idx] += x[idx];
+    }
+  }
+}
+
+template <typename T>
 __global__ void gpudevicemem_halo_set_constant_3d1_kernel(
     uint32_t len,
     uint32_t ax0_size,
@@ -361,7 +601,6 @@ extern "C" void gpudevicemem_halo_expand_packed3d1_f32(
     const struct KernelConfig *cfg,
     struct CUstream_st *stream)
 {
-  // TODO
   uint32_t len = ax0_size * (ax1_size + halo_size * 2) * ax2_size;
   gpudevicemem_halo_expand_packed3d1_kernel<float><<<cfg->flat_grid_dim(len), cfg->flat_block_dim(), 0, stream>>>(
       len,
@@ -383,9 +622,176 @@ extern "C" void gpudevicemem_halo_project_packed3d1_f32(
     const struct KernelConfig *cfg,
     struct CUstream_st *stream)
 {
-  // TODO
   uint32_t len = ax0_size * ax1_size * ax2_size;
   gpudevicemem_halo_project_packed3d1_kernel<float><<<cfg->flat_grid_dim(len), cfg->flat_block_dim(), 0, stream>>>(
+      len,
+      ax0_size,
+      ax1_size,
+      ax2_size,
+      halo_size,
+      x,
+      y);
+}
+
+extern "C" void gpudevicemem_halo_pack_lo_packed3d1_f32(
+    uint32_t ax0_size,
+    uint32_t ax1_size,
+    uint32_t ax2_size,
+    uint32_t halo_size,
+    const float *x,
+    float *y,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream)
+{
+  uint32_t len = ax0_size * halo_size * ax2_size;
+  gpudevicemem_halo_pack_lo_packed3d1_kernel<float><<<cfg->flat_grid_dim(len), cfg->flat_block_dim(), 0, stream>>>(
+      len,
+      ax0_size,
+      ax1_size,
+      ax2_size,
+      halo_size,
+      x,
+      y);
+}
+
+extern "C" void gpudevicemem_halo_pack_hi_packed3d1_f32(
+    uint32_t ax0_size,
+    uint32_t ax1_size,
+    uint32_t ax2_size,
+    uint32_t halo_size,
+    const float *x,
+    float *y,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream)
+{
+  uint32_t len = ax0_size * halo_size * ax2_size;
+  gpudevicemem_halo_pack_hi_packed3d1_kernel<float><<<cfg->flat_grid_dim(len), cfg->flat_block_dim(), 0, stream>>>(
+      len,
+      ax0_size,
+      ax1_size,
+      ax2_size,
+      halo_size,
+      x,
+      y);
+}
+
+extern "C" void gpudevicemem_halo_unpack_lo_packed3d1_f32(
+    uint32_t ax0_size,
+    uint32_t ax1_size,
+    uint32_t ax2_size,
+    uint32_t halo_size,
+    const float *x,
+    float *y,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream)
+{
+  uint32_t len = ax0_size * halo_size * ax2_size;
+  gpudevicemem_halo_unpack_lo_packed3d1_kernel<float><<<cfg->flat_grid_dim(len), cfg->flat_block_dim(), 0, stream>>>(
+      len,
+      ax0_size,
+      ax1_size,
+      ax2_size,
+      halo_size,
+      x,
+      y);
+}
+
+extern "C" void gpudevicemem_halo_unpack_hi_packed3d1_f32(
+    uint32_t ax0_size,
+    uint32_t ax1_size,
+    uint32_t ax2_size,
+    uint32_t halo_size,
+    const float *x,
+    float *y,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream)
+{
+  uint32_t len = ax0_size * halo_size * ax2_size;
+  gpudevicemem_halo_unpack_hi_packed3d1_kernel<float><<<cfg->flat_grid_dim(len), cfg->flat_block_dim(), 0, stream>>>(
+      len,
+      ax0_size,
+      ax1_size,
+      ax2_size,
+      halo_size,
+      x,
+      y);
+}
+
+extern "C" void gpudevicemem_halo_ghost_pack_lo_packed3d1_f32(
+    uint32_t ax0_size,
+    uint32_t ax1_size,
+    uint32_t ax2_size,
+    uint32_t halo_size,
+    const float *x,
+    float *y,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream)
+{
+  uint32_t len = ax0_size * halo_size * ax2_size;
+  gpudevicemem_halo_ghost_pack_lo_packed3d1_kernel<float><<<cfg->flat_grid_dim(len), cfg->flat_block_dim(), 0, stream>>>(
+      len,
+      ax0_size,
+      ax1_size,
+      ax2_size,
+      halo_size,
+      x,
+      y);
+}
+
+extern "C" void gpudevicemem_halo_ghost_pack_hi_packed3d1_f32(
+    uint32_t ax0_size,
+    uint32_t ax1_size,
+    uint32_t ax2_size,
+    uint32_t halo_size,
+    const float *x,
+    float *y,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream)
+{
+  uint32_t len = ax0_size * halo_size * ax2_size;
+  gpudevicemem_halo_ghost_pack_hi_packed3d1_kernel<float><<<cfg->flat_grid_dim(len), cfg->flat_block_dim(), 0, stream>>>(
+      len,
+      ax0_size,
+      ax1_size,
+      ax2_size,
+      halo_size,
+      x,
+      y);
+}
+
+extern "C" void gpudevicemem_halo_edge_reduce_lo_packed3d1_f32(
+    uint32_t ax0_size,
+    uint32_t ax1_size,
+    uint32_t ax2_size,
+    uint32_t halo_size,
+    const float *x,
+    float *y,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream)
+{
+  uint32_t len = ax0_size * halo_size * ax2_size;
+  gpudevicemem_halo_edge_reduce_lo_packed3d1_kernel<float><<<cfg->flat_grid_dim(len), cfg->flat_block_dim(), 0, stream>>>(
+      len,
+      ax0_size,
+      ax1_size,
+      ax2_size,
+      halo_size,
+      x,
+      y);
+}
+
+extern "C" void gpudevicemem_halo_edge_reduce_hi_packed3d1_f32(
+    uint32_t ax0_size,
+    uint32_t ax1_size,
+    uint32_t ax2_size,
+    uint32_t halo_size,
+    const float *x,
+    float *y,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream)
+{
+  uint32_t len = ax0_size * halo_size * ax2_size;
+  gpudevicemem_halo_edge_reduce_hi_packed3d1_kernel<float><<<cfg->flat_grid_dim(len), cfg->flat_block_dim(), 0, stream>>>(
       len,
       ax0_size,
       ax1_size,
