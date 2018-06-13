@@ -65,6 +65,15 @@ public:
   }
 };
 
+template <typename T>
+class OnlineAverageFlatMapAccumulate {
+public:
+  __forceinline__ __device__ static void ConstantFlatMapIndex(uint32_t idx, T c, const T *x, T *y) {
+    T y_i = y[idx];
+    y[idx] = y_i + c * (x[idx] - y_i);
+  }
+};
+
 template <typename T, typename FlatMap>
 __global__ void gpudevicemem_constant_flat_map_kernel(
     uint32_t len,
@@ -98,6 +107,18 @@ extern "C" void gpudevicemem_mult_constant_flat_map_f32(
     cudaStream_t stream)
 {
   gpudevicemem_constant_flat_map_kernel<float, MultConstantFlatMap<float>><<<cfg->flat_grid_dim(len), cfg->flat_block_dim(), 0, stream>>>(
+      len, c, x, y);
+}
+
+extern "C" void gpudevicemem_online_average_flat_map_accum_f32(
+    uint32_t len,
+    float c,
+    const float *x,
+    float *y,
+    const KernelConfig *cfg,
+    cudaStream_t stream)
+{
+  gpudevicemem_constant_flat_map_kernel<float, OnlineAverageFlatMapAccumulate<float>><<<cfg->flat_grid_dim(len), cfg->flat_block_dim(), 0, stream>>>(
       len, c, x, y);
 }
 
