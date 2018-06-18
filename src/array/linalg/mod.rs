@@ -84,7 +84,9 @@ impl GPUVectorOps<f32> for GPUDeviceArrayViewMut1d<f32> {
     assert!(cublas_h.set_stream(&mut stream).is_ok());
     assert!(cublas_h.set_pointer_mode(CublasPointerMode::Host).is_ok());
     assert!(cublas_h.set_atomics_mode(CublasAtomicsMode::NotAllowed).is_ok());
-    assert!(cublas_h.set_math_mode(CublasMathMode::Default).is_ok());
+    #[cfg(feature = "cuda9")] {
+      assert!(cublas_h.set_math_mode(CublasMathMode::Default).is_ok());
+    }
     assert_eq!(w.size()[0], self.size());
     assert_eq!(w.size()[1], x.size());
     assert_eq!(w.stride()[0], 1);
@@ -169,7 +171,9 @@ impl GPUMatrixOps<f32> for GPUDeviceArrayViewMut2d<f32> {
     assert!(cublas_h.set_stream(&mut stream).is_ok());
     assert!(cublas_h.set_pointer_mode(CublasPointerMode::Host).is_ok());
     assert!(cublas_h.set_atomics_mode(CublasAtomicsMode::NotAllowed).is_ok());
-    assert!(cublas_h.set_math_mode(CublasMathMode::Default).is_ok());
+    #[cfg(feature = "cuda9")] {
+      assert!(cublas_h.set_math_mode(CublasMathMode::Default).is_ok());
+    }
     assert_eq!(w.size()[0], self.size()[0]);
     assert_eq!(w.size()[1], x.size()[0]);
     assert_eq!(x.size()[1], self.size()[1]);
@@ -203,7 +207,9 @@ impl GPUMatrixOps<f32> for GPUDeviceArrayViewMut2d<f32> {
     assert!(cublas_h.set_stream(&mut stream).is_ok());
     assert!(cublas_h.set_pointer_mode(CublasPointerMode::Host).is_ok());
     assert!(cublas_h.set_atomics_mode(CublasAtomicsMode::NotAllowed).is_ok());
-    assert!(cublas_h.set_math_mode(CublasMathMode::Default).is_ok());
+    #[cfg(feature = "cuda9")] {
+      assert!(cublas_h.set_math_mode(CublasMathMode::Default).is_ok());
+    }
     assert_eq!(w.size()[1], self.size()[0]);
     assert_eq!(w.size()[0], y.size()[0]);
     assert_eq!(y.size()[1], self.size()[1]);
@@ -237,7 +243,9 @@ impl GPUMatrixOps<f32> for GPUDeviceArrayViewMut2d<f32> {
     assert!(cublas_h.set_stream(&mut stream).is_ok());
     assert!(cublas_h.set_pointer_mode(CublasPointerMode::Host).is_ok());
     assert!(cublas_h.set_atomics_mode(CublasAtomicsMode::NotAllowed).is_ok());
-    assert!(cublas_h.set_math_mode(CublasMathMode::Default).is_ok());
+    #[cfg(feature = "cuda9")] {
+      assert!(cublas_h.set_math_mode(CublasMathMode::Default).is_ok());
+    }
     assert_eq!(y.size()[0], self.size()[0]);
     assert_eq!(y.size()[1], x.size()[1]);
     assert_eq!(x.size()[0], self.size()[1]);

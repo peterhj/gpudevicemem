@@ -23,8 +23,8 @@ use cuda_rand::{CurandGenerator};
 use memarray::*;
 use parking_lot::{Mutex};
 
-use std::collections::range::{RangeArgument};
 use std::mem::{size_of};
+use std::ops::{RangeBounds};
 use std::sync::{Arc};
 
 pub mod linalg;
@@ -505,7 +505,7 @@ impl<Idx, T> DenseArray for GPUDeviceArrayView<Idx, T> where Idx: ArrayIndex, T:
 
 impl<T> GPUDeviceArrayView1d<T> where T: Copy {
   pub fn view<R>(self, r: R) -> GPUDeviceArrayView1d<T>
-  where R: RangeArgument<usize>,
+  where R: RangeBounds<usize>,
   {
     let (start_idx, end_idx) = range2idxs_1d(r, self.size);
     let view_size = end_idx - start_idx;
@@ -604,7 +604,7 @@ impl<Idx, T> DenseArray for GPUDeviceArrayViewMut<Idx, T> where Idx: ArrayIndex,
 
 impl<T> GPUDeviceArrayViewMut1d<T> where T: Copy {
   pub fn view_mut<R>(self, r: R) -> GPUDeviceArrayViewMut1d<T>
-  where R: RangeArgument<usize>,
+  where R: RangeBounds<usize>,
   {
     let (start_idx, end_idx) = range2idxs_1d(r, self.size);
     let view_size = end_idx - start_idx;

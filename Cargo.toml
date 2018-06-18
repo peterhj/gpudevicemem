@@ -7,8 +7,12 @@ authors = ["Peter Jin <peterhaijin@gmail.com>"]
 name = "gpudevicemem"
 path = "src/lib.rs"
 
+[features]
+cuda9 = ["cuda_blas/cuda9"]
+
 [build-dependencies]
-bindgen = "^0.32"
+#bindgen = "^0.32"
+bindgen = "*"
 cc = "*"
 walkdir = "*"
 
@@ -22,5 +26,6 @@ cuda_rand = { path = "../cuda_rand" }
 float = { path = "../libfloat" }
 lazy_static = "*"
 memarray = { path = "../memarray" }
-parking_lot = "*"
 #parking_lot = { path = "../parking_lot" }
+#parking_lot = "*"
+parking_lot = { version = "^0.5", features = ["nightly"] }
