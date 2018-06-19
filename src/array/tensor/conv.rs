@@ -432,7 +432,14 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
   })))
 }
 
-pub fn query_gpu_conv_bwd_w_algo<WTy, XTy, YTy>(dev: GPUDeviceId, maybe_determinism: Option<GPUMathDeterminism>, maybe_math_mode: Option<GPUMathMode>, conv_shape: XConvFullShape, conn: GPUDeviceConn) -> Option<XGPUConvBwdWConfig>
+pub fn query_gpu_conv_bwd_w_algo<WTy, XTy, YTy>(
+    dev: GPUDeviceId,
+    maybe_determinism: Option<GPUMathDeterminism>,
+    maybe_math_mode: Option<GPUMathMode>,
+    conv_shape: XConvFullShape,
+    conn: GPUDeviceConn)
+//-> Option<XGPUConvBwdWConfig>
+-> Option<(XGPUConvBwdWConfig, XGPUConvState<WTy, XTy, YTy>)>
 where WTy: GPUDataTyped + CudnnDataTypeExt,
       XTy: GPUDataTyped + CudnnDataTypeExt,
       YTy: GPUDataTyped + CudnnDataTypeExt,
@@ -519,7 +526,10 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
   {
     let cache = CACHED_CONV_BWD_W_ALGOS.lock().unwrap();
     if let Some(algo) = cache.get(&key) {
-      return Some(algo.clone())
+      //return Some(algo.clone())
+      return Some((algo.clone(), XGPUConvState::Cudnn(CudnnGPUConvState{
+        kernel_desc, src_desc, dst_desc, conv_desc,
+      })));
     }
   }
 
@@ -594,10 +604,20 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
       cache.insert(key, algo.clone());
     }
   }
-  maybe_algo
+  //maybe_algo
+  maybe_algo.map(|algo| (algo, XGPUConvState::Cudnn(CudnnGPUConvState{
+    kernel_desc, src_desc, dst_desc, conv_desc,
+  })))
 }
 
-pub fn query_gpu_conv_bwd_x_algo<WTy, XTy, YTy>(dev: GPUDeviceId, maybe_determinism: Option<GPUMathDeterminism>, maybe_math_mode: Option<GPUMathMode>, conv_shape: XConvFullShape, conn: GPUDeviceConn) -> Option<XGPUConvBwdXConfig>
+pub fn query_gpu_conv_bwd_x_algo<WTy, XTy, YTy>(
+    dev: GPUDeviceId,
+    maybe_determinism: Option<GPUMathDeterminism>,
+    maybe_math_mode: Option<GPUMathMode>,
+    conv_shape: XConvFullShape,
+    conn: GPUDeviceConn)
+//-> Option<XGPUConvBwdXConfig>
+-> Option<(XGPUConvBwdXConfig, XGPUConvState<WTy, XTy, YTy>)>
 where WTy: GPUDataTyped + CudnnDataTypeExt,
       XTy: GPUDataTyped + CudnnDataTypeExt,
       YTy: GPUDataTyped + CudnnDataTypeExt,
@@ -684,7 +704,10 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
   {
     let cache = CACHED_CONV_BWD_X_ALGOS.lock().unwrap();
     if let Some(algo) = cache.get(&key) {
-      return Some(algo.clone())
+      //return Some(algo.clone())
+      return Some((algo.clone(), XGPUConvState::Cudnn(CudnnGPUConvState{
+        kernel_desc, src_desc, dst_desc, conv_desc,
+      })));
     }
   }
 
@@ -759,7 +782,10 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
       cache.insert(key, algo.clone());
     }
   }
-  maybe_algo
+  //maybe_algo
+  maybe_algo.map(|algo| (algo, XGPUConvState::Cudnn(CudnnGPUConvState{
+    kernel_desc, src_desc, dst_desc, conv_desc,
+  })))
 }
 
 pub trait GPUBatchConvOps<WTy: Copy, XTy: Copy, YTy: Copy> {
@@ -782,8 +808,8 @@ pub trait GPUBatchLTransConvOps<WTy: Copy, XTy: Copy, YTy: Copy> {
       conn: GPUDeviceConn);
 }
 
-pub trait GPUBatchRTransConvOps<WTy: Copy, XTy: Copy, YTy: Copy> {
-  fn batch_right_transpose_conv2d(&mut self,
+pub trait GPUBatchOuterConvOps<WTy: Copy, XTy: Copy, YTy: Copy> {
+  fn batch_outer_conv2d(&mut self,
       cfg: &XGPUConvBwdWConfig,
       state: &mut XGPUConvState<WTy, XTy, YTy>,
       y: GPUDeviceArrayView4d<YTy>,
@@ -872,11 +898,11 @@ where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
   }
 }
 
-impl<WTy: Copy, XTy: Copy, YTy: Copy> GPUBatchRTransConvOps<WTy, XTy, YTy> for GPUDeviceArrayViewMut4d<WTy>
+impl<WTy: Copy, XTy: Copy, YTy: Copy> GPUBatchOuterConvOps<WTy, XTy, YTy> for GPUDeviceArrayViewMut4d<WTy>
 where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
       <CudnnHandle as CudnnConvExt<WTy, XTy, YTy>>::HostScalar: PseudoField,
 {
-  fn batch_right_transpose_conv2d(&mut self,
+  fn batch_outer_conv2d(&mut self,
       cfg: &XGPUConvBwdWConfig,
       state: &mut XGPUConvState<WTy, XTy, YTy>,
       y: GPUDeviceArrayView4d<YTy>,
