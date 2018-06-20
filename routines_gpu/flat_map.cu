@@ -27,6 +27,14 @@ public:
   }
 };
 
+template <typename T>
+class AddConstantFlatMapInplace {
+public:
+  __forceinline__ __device__ static void ConstantFlatMapInplaceIndex(uint32_t idx, T c, T *y) {
+    y[idx] = y[idx] + c;
+  }
+};
+
 template <typename T, typename FlatMap>
 __global__ void gpudevicemem_constant_flat_map_inplace_kernel(
     uint32_t len,
@@ -46,6 +54,17 @@ extern "C" void gpudevicemem_set_constant_flat_map_inplace_f32(
     cudaStream_t stream)
 {
   gpudevicemem_constant_flat_map_inplace_kernel<float, SetConstantFlatMapInplace<float>><<<cfg->flat_grid_dim(len), cfg->flat_block_dim(), 0, stream>>>(
+      len, c, y);
+}
+
+extern "C" void gpudevicemem_add_constant_flat_map_inplace_f32(
+    uint32_t len,
+    float c,
+    float *y,
+    const KernelConfig *cfg,
+    cudaStream_t stream)
+{
+  gpudevicemem_constant_flat_map_inplace_kernel<float, AddConstantFlatMapInplace<float>><<<cfg->flat_grid_dim(len), cfg->flat_block_dim(), 0, stream>>>(
       len, c, y);
 }
 

@@ -99,6 +99,12 @@ void gpudevicemem_bcast_flat_mult_add_I1b_I2abc_Oabc_packed_f32(
     struct CUstream_st *stream);
 
 // "flat_linear.cu"
+void gpudevicemem_flat_add_inplace_f32(
+    uint32_t len,
+    const float *x,
+    float *y,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream);
 void gpudevicemem_flat_mult_f32(
     uint32_t len,
     const float *lx,
@@ -117,6 +123,12 @@ void gpudevicemem_flat_mult_add_f32(
 
 // "flat_map.cu"
 void gpudevicemem_set_constant_flat_map_inplace_f32(
+    uint32_t len,
+    float c,
+    float *y,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream);
+void gpudevicemem_add_constant_flat_map_inplace_f32(
     uint32_t len,
     float c,
     float *y,
