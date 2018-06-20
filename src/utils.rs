@@ -1,3 +1,5 @@
+#![allow(non_upper_case_globals)]
+
 use ::*;
 
 use cuda::ffi::runtime::*;

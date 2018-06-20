@@ -245,6 +245,7 @@ pub struct CudnnGPUConvState<WTy, XTy, YTy> {
   kernel_desc:  CudnnFilterDesc<WTy>,
   src_desc:     CudnnTensorDesc<XTy>,
   dst_desc:     CudnnTensorDesc<YTy>,
+  bias_desc:    CudnnTensorDesc<WTy>,
   conv_desc:    CudnnConvDesc,
 }
 
@@ -280,6 +281,7 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
   let mut kernel_desc = CudnnFilterDesc::<WTy>::create().unwrap();
   let mut src_desc = CudnnTensorDesc::<XTy>::create().unwrap();
   let mut dst_desc = CudnnTensorDesc::<YTy>::create().unwrap();
+  let mut bias_desc = CudnnTensorDesc::<WTy>::create().unwrap();
   let mut conv_desc = CudnnConvDesc::create().unwrap();
   match conv_shape {
     XConvFullShape::Conv2d(shape) => {
@@ -301,6 +303,12 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
             sz2int(shape.dst_size[2]),
             sz2int(shape.dst_size[1]),
             sz2int(shape.dst_size[0]),
+        ).is_ok());
+        assert!(bias_desc.set_4d_nchw(
+            1,
+            sz2int(shape.dst_size[3]),
+            1,
+            1,
         ).is_ok());
       } else if shape.is_default_nhwc() {
         unimplemented!();
@@ -351,7 +359,7 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
     let cache = CACHED_CONV_FWD_ALGOS.lock().unwrap();
     if let Some(algo) = cache.get(&key) {
       return Some((algo.clone(), XGPUConvState::Cudnn(CudnnGPUConvState{
-        kernel_desc, src_desc, dst_desc, conv_desc,
+        kernel_desc, src_desc, dst_desc, bias_desc, conv_desc,
       })));
     }
   }
@@ -428,8 +436,106 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
     }
   }
   maybe_algo.map(|algo| (algo, XGPUConvState::Cudnn(CudnnGPUConvState{
-    kernel_desc, src_desc, dst_desc, conv_desc,
+    kernel_desc, src_desc, dst_desc, bias_desc, conv_desc,
   })))
+}
+
+pub fn query_gpu_conv_bwd_b_state<WTy, XTy, YTy>(
+    dev: GPUDeviceId,
+    maybe_determinism: Option<GPUMathDeterminism>,
+    maybe_math_mode: Option<GPUMathMode>,
+    conv_shape: XConvFullShape,
+    conn: GPUDeviceConn)
+-> Option<XGPUConvState<WTy, XTy, YTy>>
+where WTy: GPUDataTyped + CudnnDataTypeExt,
+      XTy: GPUDataTyped + CudnnDataTypeExt,
+      YTy: GPUDataTyped + CudnnDataTypeExt,
+{
+  let determinism = maybe_determinism.unwrap_or(GPUMathDeterminism::default());
+  let math_mode = maybe_math_mode.unwrap_or(GPUMathMode::default());
+  let conv_type = XConvType{
+    w_ty:   WTy::gpu_data_ty(),
+    x_ty:   XTy::gpu_data_ty(),
+    y_ty:   YTy::gpu_data_ty(),
+  };
+
+  let mut kernel_desc = CudnnFilterDesc::<WTy>::create().unwrap();
+  let mut src_desc = CudnnTensorDesc::<XTy>::create().unwrap();
+  let mut dst_desc = CudnnTensorDesc::<YTy>::create().unwrap();
+  let mut bias_desc = CudnnTensorDesc::<WTy>::create().unwrap();
+  let mut conv_desc = CudnnConvDesc::create().unwrap();
+  match conv_shape {
+    XConvFullShape::Conv2d(shape) => {
+      // TODO: configure tensor layout.
+      if shape.is_default_nchw() {
+        assert!(kernel_desc.set_4d_nchw(
+            sz2int(shape.dst_size[3]),
+            sz2int(shape.src_size[2]),
+            sz2int(shape.filter[1]),
+            sz2int(shape.filter[0]),
+        ).is_ok());
+        assert!(src_desc.set_4d_nchw(
+            sz2int(shape.src_size[3]),
+            sz2int(shape.src_size[2]),
+            sz2int(shape.src_size[1]),
+            sz2int(shape.src_size[0]),
+        ).is_ok());
+        assert!(dst_desc.set_4d_nchw(
+            sz2int(shape.dst_size[3]),
+            sz2int(shape.dst_size[2]),
+            sz2int(shape.dst_size[1]),
+            sz2int(shape.dst_size[0]),
+        ).is_ok());
+        assert!(bias_desc.set_4d_nchw(
+            1,
+            sz2int(shape.dst_size[3]),
+            1,
+            1,
+        ).is_ok());
+      } else if shape.is_default_nhwc() {
+        unimplemented!();
+      } else {
+        unimplemented!("only nchw layout is currently supported");
+      }
+      assert!(conv_desc.set_2d(
+          sz2int(shape.zero_pad[1]),  sz2int(shape.zero_pad[0]),
+          sz2int(shape.stride[1]),    sz2int(shape.stride[0]),
+          sz2int(shape.dilation[1]),  sz2int(shape.dilation[0]),
+          match shape.cross {
+            false => cudnnConvolutionMode_t_CUDNN_CONVOLUTION,
+            true  => cudnnConvolutionMode_t_CUDNN_CROSS_CORRELATION,
+          },
+          match math_mode {
+            GPUMathMode::Fp32 => f32::cudnn_data_ty(),
+            GPUMathMode::Fp64 => f64::cudnn_data_ty(),
+            GPUMathMode::Fp16 | GPUMathMode::Fp16MMA => f16_stub::cudnn_data_ty(),
+          },
+      ).is_ok());
+      if shape.groups > 1 {
+        assert!(conv_desc.set_group_count(sz2int(shape.groups)).is_ok());
+      }
+    }
+    _ => unimplemented!(),
+  }
+  match math_mode {
+    GPUMathMode::Fp16MMA => {
+      assert!(CUDNN_MAJOR >= 7);
+      assert_eq!(conv_type.w_ty, GPUDataType::Fp16);
+      assert_eq!(conv_type.x_ty, GPUDataType::Fp16);
+      assert_eq!(conv_type.y_ty, GPUDataType::Fp16);
+      assert!(conv_desc.set_math_type(cudnnMathType_t_CUDNN_TENSOR_OP_MATH).is_ok());
+    }
+    _ => {
+      let math_ty = math_mode.gpu_data_ty();
+      assert_eq!(conv_type.w_ty, math_ty);
+      assert_eq!(conv_type.x_ty, math_ty);
+      assert_eq!(conv_type.y_ty, math_ty);
+    }
+  }
+
+  return Some(XGPUConvState::Cudnn(CudnnGPUConvState{
+    kernel_desc, src_desc, dst_desc, bias_desc, conv_desc,
+  }));
 }
 
 pub fn query_gpu_conv_bwd_w_algo<WTy, XTy, YTy>(
@@ -455,6 +561,7 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
   let mut kernel_desc = CudnnFilterDesc::<WTy>::create().unwrap();
   let mut src_desc = CudnnTensorDesc::<XTy>::create().unwrap();
   let mut dst_desc = CudnnTensorDesc::<YTy>::create().unwrap();
+  let mut bias_desc = CudnnTensorDesc::<WTy>::create().unwrap();
   let mut conv_desc = CudnnConvDesc::create().unwrap();
   match conv_shape {
     XConvFullShape::Conv2d(shape) => {
@@ -477,6 +584,12 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
             sz2int(shape.dst_size[2]),
             sz2int(shape.dst_size[1]),
             sz2int(shape.dst_size[0]),
+        ).is_ok());
+        assert!(bias_desc.set_4d_nchw(
+            1,
+            sz2int(shape.dst_size[3]),
+            1,
+            1,
         ).is_ok());
       } else if shape.is_default_nhwc() {
         unimplemented!();
@@ -528,7 +641,7 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
     if let Some(algo) = cache.get(&key) {
       //return Some(algo.clone())
       return Some((algo.clone(), XGPUConvState::Cudnn(CudnnGPUConvState{
-        kernel_desc, src_desc, dst_desc, conv_desc,
+        kernel_desc, src_desc, dst_desc, bias_desc, conv_desc,
       })));
     }
   }
@@ -606,7 +719,7 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
   }
   //maybe_algo
   maybe_algo.map(|algo| (algo, XGPUConvState::Cudnn(CudnnGPUConvState{
-    kernel_desc, src_desc, dst_desc, conv_desc,
+    kernel_desc, src_desc, dst_desc, bias_desc, conv_desc,
   })))
 }
 
@@ -633,6 +746,7 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
   let mut kernel_desc = CudnnFilterDesc::<WTy>::create().unwrap();
   let mut src_desc = CudnnTensorDesc::<XTy>::create().unwrap();
   let mut dst_desc = CudnnTensorDesc::<YTy>::create().unwrap();
+  let mut bias_desc = CudnnTensorDesc::<WTy>::create().unwrap();
   let mut conv_desc = CudnnConvDesc::create().unwrap();
   match conv_shape {
     XConvFullShape::Conv2d(shape) => {
@@ -655,6 +769,12 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
             sz2int(shape.dst_size[2]),
             sz2int(shape.dst_size[1]),
             sz2int(shape.dst_size[0]),
+        ).is_ok());
+        assert!(bias_desc.set_4d_nchw(
+            1,
+            sz2int(shape.dst_size[3]),
+            1,
+            1,
         ).is_ok());
       } else if shape.is_default_nhwc() {
         unimplemented!();
@@ -706,7 +826,7 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
     if let Some(algo) = cache.get(&key) {
       //return Some(algo.clone())
       return Some((algo.clone(), XGPUConvState::Cudnn(CudnnGPUConvState{
-        kernel_desc, src_desc, dst_desc, conv_desc,
+        kernel_desc, src_desc, dst_desc, bias_desc, conv_desc,
       })));
     }
   }
@@ -784,7 +904,7 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
   }
   //maybe_algo
   maybe_algo.map(|algo| (algo, XGPUConvState::Cudnn(CudnnGPUConvState{
-    kernel_desc, src_desc, dst_desc, conv_desc,
+    kernel_desc, src_desc, dst_desc, bias_desc, conv_desc,
   })))
 }
 
@@ -795,6 +915,14 @@ pub trait GPUBatchConvOps<WTy: Copy, XTy: Copy, YTy: Copy> {
       w: GPUDeviceArrayView4d<WTy>,
       x: GPUDeviceArrayView4d<XTy>,
       workspace: GPUDeviceArrayViewMut1d<u8>,
+      conn: GPUDeviceConn);
+}
+
+pub trait GPUBatchConvReduceOps<WTy: Copy, XTy: Copy, YTy: Copy> {
+  fn batch_conv2d_reduce_bwd(&mut self,
+      //cfg: &XGPUConvFwdConfig,
+      state: &mut XGPUConvState<WTy, XTy, YTy>,
+      y: GPUDeviceArrayView4d<YTy>,
       conn: GPUDeviceConn);
 }
 
@@ -849,6 +977,38 @@ where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
             workspace.size(),
             beta,
             &mut state.dst_desc,
+            self.as_mut_dptr(),
+        ) };
+        assert!(status.is_ok());
+      }
+      //_ => unimplemented!(),
+    }
+  }
+}
+
+impl<WTy: Copy, XTy: Copy, YTy: Copy> GPUBatchConvReduceOps<WTy, XTy, YTy> for GPUDeviceArrayViewMut1d<WTy>
+where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
+      <CudnnHandle as CudnnConvExt<WTy, XTy, YTy>>::HostScalar: PseudoField,
+{
+  fn batch_conv2d_reduce_bwd(&mut self,
+    //cfg: &XGPUConvFwdConfig,
+    state: &mut XGPUConvState<WTy, XTy, YTy>,
+    y: GPUDeviceArrayView4d<YTy>,
+    conn: GPUDeviceConn)
+  {
+    match state {
+      &mut XGPUConvState::Cudnn(ref mut state) => {
+        let mut stream = conn.cuda_stream();
+        let mut cudnn_h = conn.cudnn();
+        assert!(cudnn_h.set_stream(&mut stream).is_ok());
+        let alpha: <CudnnHandle as CudnnConvExt<WTy, XTy, YTy>>::HostScalar = PseudoField::one();
+        let beta: <CudnnHandle as CudnnConvExt<WTy, XTy, YTy>>::HostScalar = PseudoRing::zero();
+        let status = unsafe { cudnn_h.conv_bwd_bias(
+            alpha,
+            &mut state.dst_desc,
+            y.as_dptr(),
+            beta,
+            &mut state.bias_desc,
             self.as_mut_dptr(),
         ) };
         assert!(status.is_ok());
