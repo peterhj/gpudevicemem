@@ -41,6 +41,7 @@ fn main() {
     .flag("-Xcompiler").flag("-Werror")
     .include("routines_gpu")
     .include("/usr/local/cuda/include")
+    .file("routines_gpu/bcast.cu")
     .file("routines_gpu/bcast_flat_linear.cu")
     .file("routines_gpu/flat_linear.cu")
     .file("routines_gpu/flat_map.cu")
@@ -52,6 +53,9 @@ fn main() {
   bindgen::Builder::default()
     .header("routines_gpu/lib.h")
     .whitelist_recursively(false)
+    // "bcast.cu"
+    .whitelist_function("gpudevicemem_bcast_packed_f32")
+    .whitelist_function("gpudevicemem_bcast_packed_accumulate_f32")
     // "bcast_flat_linear.cu"
     .whitelist_function("gpudevicemem_bcast_flat_add_I1a_I2ab_Oab_packed_f32")
     .whitelist_function("gpudevicemem_bcast_flat_add_I1a_IO2ab_inplace_packed_f32")
@@ -71,6 +75,7 @@ fn main() {
     .whitelist_function("gpudevicemem_mult_constant_flat_map_f32")
     .whitelist_function("gpudevicemem_online_average_flat_map_accum_f32")
     // "reduce.cu"
+    .whitelist_function("gpudevicemem_sum_packed_deterministic_f32")
     .whitelist_function("gpudevicemem_sum_I1ab_Oa_packed_deterministic_f32")
     .whitelist_function("gpudevicemem_sum_I1ab_Ob_packed_deterministic_f32")
     //.whitelist_function("gpudevicemem_square_sum_I1ab_Ob_packed_deterministic_f32")

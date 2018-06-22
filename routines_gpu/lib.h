@@ -27,6 +27,21 @@ extern "C" {
 struct KernelConfig;
 struct CUstream_st;
 
+// "bcast.cu"
+
+void gpudevicemem_bcast_packed_f32(
+    uint32_t bcast_dim,
+    const float *x,
+    float *y,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream);
+void gpudevicemem_bcast_packed_accumulate_f32(
+    uint32_t bcast_dim,
+    const float *x,
+    float *y,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream);
+
 // "bcast_flat_linear.cu"
 
 void gpudevicemem_bcast_flat_add_I1a_I2ab_Oab_packed_f32(
@@ -206,6 +221,12 @@ void gpudevicemem_rcosh2_flat_map_f32(
 
 // "reduce.cu"
 
+void gpudevicemem_sum_packed_deterministic_f32(
+    uint32_t reduce_dim,
+    const float *x,
+    float *y,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream);
 void gpudevicemem_sum_I1ab_Oa_packed_deterministic_f32(
     uint32_t inner_dim,
     uint32_t reduce_dim,

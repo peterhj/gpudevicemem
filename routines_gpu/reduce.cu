@@ -37,6 +37,43 @@ public:
 };
 
 template <typename T, typename Map, typename Reduce>
+__global__ void gpudevicemem_map_reduce_packed_deterministic_kernel(
+    uint32_t reduce_dim,
+    const T *x,
+    T *y)
+{
+  extern __shared__ T cache[];
+  uint32_t rdup_reduce_dim = (reduce_dim + blockDim.x - 1) / blockDim.x * blockDim.x;
+  T accumulator = Reduce::InitVal();
+  for (uint32_t i = threadIdx.x; i < rdup_reduce_dim; i += blockDim.x) {
+    if (i < reduce_dim) {
+      cache[threadIdx.x] = Map::Map(x[i]);
+    } else {
+      cache[threadIdx.x] = Reduce::InitVal();
+    }
+    __syncthreads();
+    threadblock_reduce_sync<T, Reduce>(cache);
+    if (0 == threadIdx.x) {
+      Reduce::Reduce(&accumulator, cache[0]);
+    }
+    __syncthreads();
+  }
+  y[0] = accumulator;
+}
+
+extern "C" void gpudevicemem_sum_packed_deterministic_f32(
+    uint32_t reduce_dim,
+    const float *x,
+    float *y,
+    const KernelConfig *cfg,
+    cudaStream_t stream)
+{
+  assert(check_power_of_2(cfg->flat_block_dim().x));
+  gpudevicemem_map_reduce_packed_deterministic_kernel<float, CopyMap<float>, AddReduce<float>><<<1, cfg->flat_block_dim(), cfg->flat_block_len() * sizeof(float), stream>>>(
+      reduce_dim, x, y);
+}
+
+template <typename T, typename Map, typename Reduce>
 __global__ void gpudevicemem_map_reduce_I1ab_Oa_packed_deterministic_kernel(
     uint32_t inner_dim,
     uint32_t reduce_dim,
