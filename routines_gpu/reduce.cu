@@ -58,7 +58,9 @@ __global__ void gpudevicemem_map_reduce_packed_deterministic_kernel(
     }
     __syncthreads();
   }
-  y[0] = accumulator;
+  if (0 == threadIdx.x) {
+    y[0] = accumulator;
+  }
 }
 
 extern "C" void gpudevicemem_sum_packed_deterministic_f32(
@@ -97,7 +99,9 @@ __global__ void gpudevicemem_map_reduce_I1ab_Oa_packed_deterministic_kernel(
       }
       __syncthreads();
     }
-    y[blk] = accumulator;
+    if (0 == threadIdx.x) {
+      y[blk] = accumulator;
+    }
   }
 }
 
@@ -138,7 +142,9 @@ __global__ void gpudevicemem_map_reduce_I1ab_Ob_packed_deterministic_kernel(
       }
       __syncthreads();
     }
-    y[blk] = accumulator;
+    if (0 == threadIdx.x) {
+      y[blk] = accumulator;
+    }
   }
 }
 
@@ -182,7 +188,9 @@ __global__ void gpudevicemem_map_reduce_I1abc_Ob_packed_deterministic_kernel(
         __syncthreads();
       }
     }
-    y[blk] = accumulator;
+    if (0 == threadIdx.x) {
+      y[blk] = accumulator;
+    }
   }
 }
 
@@ -214,7 +222,9 @@ __global__ void gpudevicemem_map_reduce_I1abc_Ob_packed_deterministic_v2_kernel(
       }
       __syncthreads();
     }
-    y[blk] = accumulator;
+    if (0 == threadIdx.x) {
+      y[blk] = accumulator;
+    }
   }
 }
 
