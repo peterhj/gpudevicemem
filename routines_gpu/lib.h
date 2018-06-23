@@ -227,6 +227,12 @@ void gpudevicemem_sum_packed_deterministic_f32(
     float *y,
     const struct KernelConfig *cfg,
     struct CUstream_st *stream);
+void gpudevicemem_sum_packed_accumulate_deterministic_f32(
+    uint32_t reduce_dim,
+    const float *x,
+    float *y,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream);
 void gpudevicemem_sum_I1ab_Oa_packed_deterministic_f32(
     uint32_t inner_dim,
     uint32_t reduce_dim,

@@ -36,7 +36,7 @@ public:
   }
 };
 
-template <typename T, typename Map, typename Reduce>
+template <typename T, typename Map, typename Reduce, typename Write>
 __global__ void gpudevicemem_map_reduce_packed_deterministic_kernel(
     uint32_t reduce_dim,
     const T *x,
@@ -59,7 +59,7 @@ __global__ void gpudevicemem_map_reduce_packed_deterministic_kernel(
     __syncthreads();
   }
   if (0 == threadIdx.x) {
-    y[0] = accumulator;
+    Write::Write(&y[0], accumulator);
   }
 }
 
@@ -71,7 +71,19 @@ extern "C" void gpudevicemem_sum_packed_deterministic_f32(
     cudaStream_t stream)
 {
   assert(check_power_of_2(cfg->flat_block_dim().x));
-  gpudevicemem_map_reduce_packed_deterministic_kernel<float, CopyMap<float>, AddReduce<float>><<<1, cfg->flat_block_dim(), cfg->flat_block_len() * sizeof(float), stream>>>(
+  gpudevicemem_map_reduce_packed_deterministic_kernel<float, CopyMap<float>, AddReduce<float>, AssignWrite<float>><<<1, cfg->flat_block_dim(), cfg->flat_block_len() * sizeof(float), stream>>>(
+      reduce_dim, x, y);
+}
+
+extern "C" void gpudevicemem_sum_packed_accumulate_deterministic_f32(
+    uint32_t reduce_dim,
+    const float *x,
+    float *y,
+    const KernelConfig *cfg,
+    cudaStream_t stream)
+{
+  assert(check_power_of_2(cfg->flat_block_dim().x));
+  gpudevicemem_map_reduce_packed_deterministic_kernel<float, CopyMap<float>, AddReduce<float>, AccumulateWrite<float>><<<1, cfg->flat_block_dim(), cfg->flat_block_len() * sizeof(float), stream>>>(
       reduce_dim, x, y);
 }
 

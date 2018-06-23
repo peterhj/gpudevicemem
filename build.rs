@@ -76,6 +76,7 @@ fn main() {
     .whitelist_function("gpudevicemem_online_average_flat_map_accum_f32")
     // "reduce.cu"
     .whitelist_function("gpudevicemem_sum_packed_deterministic_f32")
+    .whitelist_function("gpudevicemem_sum_packed_accumulate_deterministic_f32")
     .whitelist_function("gpudevicemem_sum_I1ab_Oa_packed_deterministic_f32")
     .whitelist_function("gpudevicemem_sum_I1ab_Ob_packed_deterministic_f32")
     //.whitelist_function("gpudevicemem_square_sum_I1ab_Ob_packed_deterministic_f32")
