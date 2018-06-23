@@ -844,6 +844,39 @@ impl<Idx, T> GPUDeviceArrayViewMutConstantOpsExt<T> for GPUDeviceArrayViewMut<Id
   }
 }
 
+impl<Idx> GPUDeviceArrayViewMutConstantOpsExt<u8> for GPUDeviceArrayViewMut<Idx, u8> where Idx: ArrayIndex {
+  fn set_constant(&mut self, c: u8, conn: GPUDeviceConn) {
+    if self.is_packed() {
+      let len = self.size.flat_len();
+      let mut stream = conn.cuda_stream();
+      let status = unsafe { cuda_memset_async(
+          self.as_mut_dptr(),
+          c as i32,
+          len,
+          &mut *stream,
+      ) };
+      assert!(status.is_ok());
+    } else {
+      unimplemented!();
+    }
+  }
+
+  fn add_constant_inplace(&mut self, c: u8, conn: GPUDeviceConn) {
+    // TODO
+    unimplemented!();
+  }
+
+  fn mult_constant(&mut self, c: u8, x: GPUDeviceArrayView<Idx, u8>, conn: GPUDeviceConn) {
+    // TODO
+    unimplemented!();
+  }
+
+  fn online_average(&mut self, c: u8, x: GPUDeviceArrayView<Idx, u8>, conn: GPUDeviceConn) {
+    // TODO
+    unimplemented!();
+  }
+}
+
 impl<Idx> GPUDeviceArrayViewMutConstantOpsExt<f32> for GPUDeviceArrayViewMut<Idx, f32> where Idx: ArrayIndex {
   fn set_constant(&mut self, c: f32, conn: GPUDeviceConn) {
     if self.is_packed() {
