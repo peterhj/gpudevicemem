@@ -82,6 +82,7 @@ fn main() {
     //.whitelist_function("gpudevicemem_square_sum_I1ab_Ob_packed_deterministic_f32")
     .whitelist_function("gpudevicemem_sum_I1abc_Ob_packed_deterministic_f32")
     .whitelist_function("gpudevicemem_square_sum_I1abc_Ob_packed_deterministic_f32")
+    .whitelist_function("gpudevicemem_mult_then_sum_I1abc_I2abc_Ob_packed_deterministic_f32")
     .generate()
     .expect("bindgen failed to generate cuda kernel bindings")
     .write_to_file(out_dir.join("routines_gpu_bind.rs"))

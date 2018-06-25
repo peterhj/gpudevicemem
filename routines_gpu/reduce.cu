@@ -267,3 +267,54 @@ extern "C" void gpudevicemem_square_map_sum_I1abc_Ob_packed_deterministic_f32(
   gpudevicemem_map_reduce_I1abc_Ob_packed_deterministic_v2_kernel<float, SquareMap<float>, AddReduce<float>><<<cfg->flat_block_count(mid_dim), cfg->flat_block_dim(), cfg->flat_block_len() * sizeof(float), stream>>>(
       reduce_inner_dim, mid_dim, reduce_outer_dim, x, y);
 }
+
+template <typename T, typename Reduce>
+__global__ void gpudevicemem_mult_then_reduce_I1abc_I2abc_Ob_packed_deterministic_v2_kernel(
+    uint32_t reduce_inner_dim,
+    uint32_t mid_dim,
+    uint32_t reduce_outer_dim,
+    const T *x1,
+    const T *x2,
+    T *y)
+{
+  extern __shared__ T cache[];
+  uint32_t fused_inner_outer_dim = reduce_inner_dim * reduce_outer_dim;
+  uint32_t rdup_fused_inner_outer_dim = (fused_inner_outer_dim + blockDim.x - 1) / blockDim.x * blockDim.x;
+  for (uint32_t blk1 = gblock(); blk1 < mid_dim; blk1 += gblockcount()) {
+    T accumulator = Reduce::InitVal();
+    for (uint32_t i = threadIdx.x; i < rdup_fused_inner_outer_dim; i += blockDim.x) {
+      if (i < fused_inner_outer_dim) {
+        uint32_t i0, i2;
+        Index2::Unpack(i, &i0, reduce_inner_dim, &i2);
+        uint32_t idx = Index3::Pack(i0, reduce_inner_dim, blk1, mid_dim, i2);
+        cache[threadIdx.x] = x1[idx] * x2[idx];
+      } else {
+        cache[threadIdx.x] = Reduce::InitVal();
+      }
+      __syncthreads();
+      threadblock_reduce_sync<T, Reduce>(cache);
+      if (0 == threadIdx.x) {
+        Reduce::Reduce(&accumulator, cache[0]);
+      }
+      __syncthreads();
+    }
+    if (0 == threadIdx.x) {
+      y[blk1] = accumulator;
+    }
+  }
+}
+
+extern "C" void gpudevicemem_mult_then_sum_I1abc_I2abc_Ob_packed_deterministic_f32(
+    uint32_t reduce_inner_dim,
+    uint32_t mid_dim,
+    uint32_t reduce_outer_dim,
+    const float *x1,
+    const float *x2,
+    float *y,
+    const KernelConfig *cfg,
+    cudaStream_t stream)
+{
+  assert(check_power_of_2(cfg->flat_block_dim().x));
+  gpudevicemem_mult_then_reduce_I1abc_I2abc_Ob_packed_deterministic_v2_kernel<float, AddReduce<float>><<<cfg->flat_block_count(mid_dim), cfg->flat_block_dim(), cfg->flat_block_len() * sizeof(float), stream>>>(
+      reduce_inner_dim, mid_dim, reduce_outer_dim, x1, x2, y);
+}

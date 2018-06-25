@@ -102,7 +102,7 @@ void gpudevicemem_bcast_flat_mult_I1b_I2abc_Oabc_packed_f32(
     float *y,
     const struct KernelConfig *cfg,
     struct CUstream_st *stream);
-void gpudevicemem_bcast_flat_mult_add_I1b_I2abc_Oabc_packed_f32(
+void gpudevicemem_bcast_flat_mult_add_I1b_I2abc_I3b_Oabc_packed_f32(
     uint32_t inner_dim,
     uint32_t bcast_dim,
     uint32_t outer_dim,
@@ -260,6 +260,15 @@ void gpudevicemem_square_sum_I1abc_Ob_packed_deterministic_f32(
     uint32_t mid_dim,
     uint32_t reduce_outer_dim,
     const float *x,
+    float *y,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream);
+void gpudevicemem_mult_then_sum_I1abc_I2abc_Ob_packed_deterministic_f32(
+    uint32_t reduce_inner_dim,
+    uint32_t mid_dim,
+    uint32_t reduce_outer_dim,
+    const float *x1,
+    const float *x2,
     float *y,
     const struct KernelConfig *cfg,
     struct CUstream_st *stream);

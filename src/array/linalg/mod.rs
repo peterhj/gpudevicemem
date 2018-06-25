@@ -16,6 +16,7 @@ limitations under the License.
 
 use ::{GPUDeviceConn};
 use ::array::*;
+use ::ffi::routines_gpu::*;
 
 use cuda_blas::*;
 
@@ -302,56 +303,3 @@ where T: Copy,
 {
   w.right_transpose_matrix_mult(y, x, conn);
 }*/
-
-pub trait GPUTensorOps<T> where T: Copy {
-  fn broadcast_add_1d_inplace(&mut self, x: GPUDeviceArrayView1d<T>, axis: isize, conn: GPUDeviceConn);
-}
-
-impl GPUTensorOps<f32> for GPUDeviceArrayViewMut4d<f32> {
-  fn broadcast_add_1d_inplace(&mut self, x: GPUDeviceArrayView1d<f32>, axis: isize, conn: GPUDeviceConn) {
-    if self.is_packed() && x.is_packed() {
-      let mut stream = conn.cuda_stream();
-      match axis {
-        0 => {
-          unsafe { gpudevicemem_bcast_flat_add_I1a_IO2ab_inplace_packed_f32(
-              sz2uint(self.size()[0]),
-              sz2uint(self.size()[1] * self.size()[2] * self.size()[3]),
-              x.as_dptr(),
-              self.as_mut_dptr(),
-              conn.cuda_kernel_cfg() as *const _,
-              stream.as_mut_ptr(),
-          ) };
-        }
-        1 => {
-          unsafe { gpudevicemem_bcast_flat_add_I1b_IO2abc_inplace_packed_f32(
-              sz2uint(self.size()[0]),
-              sz2uint(self.size()[1]),
-              sz2uint(self.size()[2] * self.size()[3]),
-              x.as_dptr(),
-              self.as_mut_dptr(),
-              conn.cuda_kernel_cfg() as *const _,
-              stream.as_mut_ptr(),
-          ) };
-        }
-        2 => {
-          unsafe { gpudevicemem_bcast_flat_add_I1b_IO2abc_inplace_packed_f32(
-              sz2uint(self.size()[0] * self.size()[1]),
-              sz2uint(self.size()[2]),
-              sz2uint(self.size()[3]),
-              x.as_dptr(),
-              self.as_mut_dptr(),
-              conn.cuda_kernel_cfg() as *const _,
-              stream.as_mut_ptr(),
-          ) };
-        }
-        3 => {
-          // TODO
-          unimplemented!();
-        }
-        _ => unreachable!(),
-      }
-    } else {
-      unimplemented!();
-    }
-  }
-}
