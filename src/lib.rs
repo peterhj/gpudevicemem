@@ -34,7 +34,7 @@ use ffi::routines_gpu::{KernelConfig};
 //use cuda::ffi::runtime::{cudaError_t, cudaStream_t, cudaDeviceProp};
 use cuda::runtime::*;
 use cuda_blas::{CublasHandle};
-use cuda_dnn::{CudnnHandle};
+use cuda_dnn::{CudnnHandle, cudnn_get_version};
 use cuda_rand::{CurandGenerator};
 use parking_lot::{Mutex, MutexGuard};
 
@@ -47,12 +47,13 @@ use std::mem::{size_of};
 use std::ops::{Deref, DerefMut};
 use std::rc::{Rc};
 use std::sync::{Arc};
-//use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{ATOMIC_USIZE_INIT, AtomicUsize, Ordering};
 
 pub mod array;
 pub mod ffi;
 pub mod utils;
 
+static TOTAL_MEMORY_USAGE: AtomicUsize = ATOMIC_USIZE_INIT;
 //static STREAM_POOL_UID_COUNTER: AtomicU64 = ATOMIC_U64_INIT;
 
 pub struct GPUHostMem<T> where T: Copy {
@@ -110,7 +111,8 @@ impl Deref for LazyCudaStream {
 impl DerefMut for LazyCudaStream {
   fn deref_mut(&mut self) -> &mut CudaStream {
     if self.h.is_none() {
-      self.h = Some(CudaStream::create().unwrap());
+      self.h = Some(CudaStream::default());
+      //self.h = Some(CudaStream::create().unwrap());
     }
     self.h.as_mut().unwrap()
   }
@@ -132,7 +134,11 @@ impl Deref for LazyCublasHandle {
 impl DerefMut for LazyCublasHandle {
   fn deref_mut(&mut self) -> &mut CublasHandle {
     if self.h.is_none() {
-      self.h = Some(CublasHandle::create().unwrap());
+      println!("DEBUG: LazyCublasHandle: creating...");
+      self.h = match CublasHandle::create() {
+        Err(e) => panic!("LazyCublasHandle: failed to create: {:?}", e),
+        Ok(h) => Some(h),
+      };
     }
     self.h.as_mut().unwrap()
   }
@@ -154,7 +160,11 @@ impl Deref for LazyCudnnHandle {
 impl DerefMut for LazyCudnnHandle {
   fn deref_mut(&mut self) -> &mut CudnnHandle {
     if self.h.is_none() {
-      self.h = Some(CudnnHandle::create().unwrap());
+      println!("DEBUG: LazyCudnnHandle: creating...");
+      self.h = match CudnnHandle::create() {
+        Err(e) => panic!("LazyCudnnHandle: failed to create: {:?}", e),
+        Ok(h) => Some(h),
+      };
     }
     self.h.as_mut().unwrap()
   }
@@ -226,7 +236,7 @@ impl GPUDeviceStreamPool {
     let kernel_cfg = KernelConfig::new(&arch_sum);
     let mut cuda_stream = LazyCudaStream::default();
     let cuda_s_uid = (&mut *cuda_stream).unique_id();
-    GPUDeviceStreamPool{
+    let mut pool = GPUDeviceStreamPool{
       dev_id:       dev_id,
       arch_sum:     arch_sum,
       kernel_cfg:   kernel_cfg,
@@ -234,7 +244,19 @@ impl GPUDeviceStreamPool {
       cuda_stream:  Arc::new(Mutex::new(cuda_stream)),
       // TODO: configurable arena limit.
       burst_arena:  GPUDeviceBurstArena::with_limit(dev_id, i32::max_value() as _),
+    };
+    // TODO: forcefully init both cublas and cudnn.
+    {
+      let conn = pool.conn();
+      let mut h = conn.cublas();
+      println!("DEBUG: GPUDeviceStreamPool: cublas: {:p} version: {}", unsafe { h.as_mut_ptr() }, h.get_version().unwrap_or(-1));
     }
+    {
+      let conn = pool.conn();
+      let mut h = conn.cudnn();
+      println!("DEBUG: GPUDeviceStreamPool: cudnn:  {:p} version: {}", unsafe { h.as_mut_ptr() }, cudnn_get_version());
+    }
+    pool
   }
 
   pub fn device(&self) -> GPUDeviceId {
@@ -349,8 +371,11 @@ impl<'a> GPUDeviceConn<'a> {
   }
 
   pub fn sync(&self) {
-    let res = self.cuda_stream().synchronize();
-    assert!(res.is_ok());
+    let status = self.cuda_stream().synchronize();
+    match status {
+      Err(e) => panic!("GPUDeviceConn: sync error: {:?} {}", e, e.get_string()),
+      Ok(_) => {}
+    }
   }
 }
 
@@ -659,6 +684,7 @@ impl GPUDeviceBurstArena {
         dev:        dev,
         max_phsz:   max_phsz,
         regions:    vec![],
+        b_used:     0,
         used0:      0,
         used_ext:   0,
         reserved:   0,
@@ -694,6 +720,7 @@ pub struct GPUDeviceBurstArenaInner {
   dev:      GPUDeviceId,
   max_phsz: usize,
   regions:  Vec<Arc<GPUDeviceRawMem<u8>>>,
+  b_used:   usize,
   used0:    usize,
   used_ext: usize,
   reserved: usize,
@@ -714,15 +741,17 @@ impl GPUDeviceBurstArenaInner {
     assert!(check_alignment(req_phsz, BURST_MEM_ALIGN));
     let total_phsz = self.used0 + self.used_ext;
     assert!(check_alignment(total_phsz, BURST_MEM_ALIGN));
+    self.b_used = 0;
     self.used0 = 0;
     self.used_ext = 0;
-    if req_phsz <= total_phsz && self.regions.len() == 1 {
+    if self.regions.len() == 1 && req_phsz <= self.regions[0].phsz {
       // Do nothing.
     } else {
       let merge_phsz = max(max(total_phsz, self.reserved), req_phsz);
       assert!(merge_phsz <= self.max_phsz, "GPUDeviceBurstArena exceeded allocation limit");
       assert!(check_alignment(merge_phsz, BURST_MEM_ALIGN));
       self.regions.clear();
+      println!("DEBUG: GPUDeviceBurstArena: merge phys size: {} total usage: {}", merge_phsz, TOTAL_MEMORY_USAGE.fetch_add(merge_phsz, Ordering::SeqCst) + merge_phsz);
       let dptr = match cuda_alloc_device::<u8>(merge_phsz) {
         Err(e) => panic!("GPUDeviceBurstArena: failed to alloc size {}: {:?}", merge_phsz, e),
         Ok(dptr) => dptr,
@@ -736,6 +765,7 @@ impl GPUDeviceBurstArenaInner {
       });
       self.regions.push(reg.clone());
     }
+    assert!(self.regions.len() >= 1);
   }
 
   pub fn reserve_bytes(&mut self, bare_phsz: usize) {
@@ -746,10 +776,13 @@ impl GPUDeviceBurstArenaInner {
   pub unsafe fn alloc<T>(&mut self, len: usize, conn: GPUDeviceConn) -> GPUDeviceTypedMem<T> where T: Copy {
     assert_eq!(self.dev, conn.device());
     let bare_phsz = len * size_of::<T>();
+    let reserve_phsz = self.b_used + bare_phsz;
+    self.reserve_bytes(reserve_phsz);
     let rdup_phsz = round_up(bare_phsz, BURST_MEM_ALIGN);
     if self._check_all_regions_free() {
       self._merge_all_regions(rdup_phsz);
     }
+    self.b_used += bare_phsz;
     let mem: Arc<GPUDeviceMem<u8>> = if self.used0 + rdup_phsz <= self.regions[0].phsz {
       let dptr = self.regions[0].dptr.offset(self.used0 as _);
       assert!(check_alignment(dptr as usize, BURST_MEM_ALIGN));
@@ -762,6 +795,7 @@ impl GPUDeviceBurstArenaInner {
       self.used0 += rdup_phsz;
       slice
     } else {
+      println!("DEBUG: GPUDeviceBurstArena: alloc phys size: {} total usage: {}", rdup_phsz, TOTAL_MEMORY_USAGE.fetch_add(rdup_phsz, Ordering::SeqCst) + rdup_phsz);
       let dptr = match cuda_alloc_device::<u8>(rdup_phsz) {
         Err(e) => panic!("GPUDeviceBurstArena: failed to alloc size {}: {:?}", rdup_phsz, e),
         Ok(dptr) => dptr,
@@ -822,6 +856,7 @@ impl<T> Drop for GPUDeviceRawMem<T> where T: Copy {
     let pop_dev = CudaDevice::get_current().unwrap();
     // TODO: need to synchronize on the ticket if one exists.
     //CudaDevice::synchronize().unwrap();
+    TOTAL_MEMORY_USAGE.fetch_sub(self.phsz, Ordering::SeqCst);
     CudaDevice::set_current(self.dev.0).unwrap();
     match unsafe { cuda_free_device::<T>(self.dptr) } {
       Err(_) => panic!(),
@@ -833,7 +868,7 @@ impl<T> Drop for GPUDeviceRawMem<T> where T: Copy {
 
 impl<T> GPUDeviceRawMem<T> where T: Copy {
   pub unsafe fn alloc(len: usize, conn: GPUDeviceConn) -> GPUDeviceRawMem<T> where T: Copy {
-    println!("DEBUG: GPUDeviceRawMem: alloc len: {}", len);
+    println!("DEBUG: GPUDeviceRawMem: alloc len: {} total usage: {}", len, TOTAL_MEMORY_USAGE.fetch_add(len * size_of::<T>(), Ordering::SeqCst) + len * size_of::<T>());
     assert!(len <= <i32>::max_value() as usize,
         "for safety, device memory size should not exceed 2**31-1 elements");
     let dptr = match cuda_alloc_device::<T>(len) {

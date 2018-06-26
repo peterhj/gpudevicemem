@@ -23,7 +23,7 @@ use cuda_dnn::ffi::*;
 use float::stub::*;
 
 use std::collections::{HashMap};
-use std::mem::{uninitialized};
+use std::mem::{uninitialized, zeroed};
 //use std::ptr::{null, null_mut};
 use std::sync::{Arc, Mutex};
 
@@ -85,7 +85,7 @@ impl GPUMathMode {
   }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum XConvFullShape {
   Conv1d(Conv1dFullShape),
   Conv2d(Conv2dFullShape),
@@ -108,7 +108,7 @@ pub type Conv1dFullShape = ConvFullShape<usize, [usize; 3]>;
 pub type Conv2dFullShape = ConvFullShape<[usize; 2], [usize; 4]>;
 pub type Conv3dFullShape = ConvFullShape<[usize; 3], [usize; 5]>;
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct ConvFullShape<WIdx, XIdx> {
   pub src_space_axes:   [isize; 2],
   pub src_feature_axis: isize,
@@ -287,7 +287,7 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
     XConvFullShape::Conv2d(shape) => {
       if shape.is_default_nchw() {
         assert!(kernel_desc.set_4d_nchw(
-            sz2int(shape.dst_size[3]),
+            sz2int(shape.dst_size[2]),
             sz2int(shape.src_size[2]),
             sz2int(shape.ker_size[1]),
             sz2int(shape.ker_size[0]),
@@ -369,7 +369,7 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
     conn.sync();
 
     let mut algo_count: i32 = 0;
-    let mut algo_results: [cudnnConvolutionFwdAlgoPerf_t; 10] = unsafe { uninitialized() };
+    let mut algo_results: [cudnnConvolutionFwdAlgoPerf_t; 10] = unsafe { zeroed() };
     {
       let mut stream = conn.cuda_stream();
       let mut cudnn_h = conn.cudnn();
@@ -387,16 +387,20 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
       assert_eq!(status, cudnnStatus_t_CUDNN_STATUS_SUCCESS);
       assert!(stream.synchronize().is_ok());
     }
+    println!("DEBUG: query_gpu_conv_fwd_algo: algos found: {}", algo_count);
     let mut found_k = None;
     for k in 0 .. algo_count as usize {
       if algo_results[k].status != cudnnStatus_t_CUDNN_STATUS_SUCCESS {
+        println!("DEBUG: query_gpu_conv_fwd_algo:   algo: {} got error: {}", k, algo_results[k].status);
         continue;
       }
       if algo_results[k].memory > workspace_limit {
+        println!("DEBUG: query_gpu_conv_fwd_algo:   algo: {} too much workspace: {}", k, algo_results[k].memory);
         continue;
       }
       if determinism == GPUMathDeterminism::Deterministic {
         if algo_results[k].determinism != cudnnDeterminism_t_CUDNN_DETERMINISTIC {
+          println!("DEBUG: query_gpu_conv_fwd_algo:   algo: {} not deterministic", k);
           continue;
         }
       }
@@ -405,6 +409,7 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
           if  algo_results[k].algo != cudnnConvolutionFwdAlgo_t_CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM &&
               algo_results[k].algo != cudnnConvolutionFwdAlgo_t_CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED
           {
+            println!("DEBUG: query_gpu_conv_fwd_algo:   algo: {} non mma compat", k);
             continue;
           }
         }
@@ -412,14 +417,17 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
       }
       if (CUDNN_MAJOR, CUDNN_MINOR) >= (5, 1) {
         if algo_results[k].algo == cudnnConvolutionFwdAlgo_t_CUDNN_CONVOLUTION_FWD_ALGO_FFT_TILING {
+          println!("DEBUG: query_gpu_conv_fwd_algo:   algo: {} skip fft tiling algo (TF compat)", k);
           continue;
         }
       }
       if CUDNN_MAJOR < 7 {
         if algo_results[k].algo == cudnnConvolutionFwdAlgo_t_CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED {
+          println!("DEBUG: query_gpu_conv_fwd_algo:   algo: {} skip winograd nonfused algo (TF compat)", k);
           continue;
         }
       }
+      println!("DEBUG: query_gpu_conv_fwd_algo:   algo: {} accepted", k);
       found_k = Some(k);
       break;
     }
@@ -469,7 +477,7 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
       // TODO: configure tensor layout.
       if shape.is_default_nchw() {
         assert!(kernel_desc.set_4d_nchw(
-            sz2int(shape.dst_size[3]),
+            sz2int(shape.dst_size[2]),
             sz2int(shape.src_size[2]),
             sz2int(shape.ker_size[1]),
             sz2int(shape.ker_size[0]),
@@ -568,7 +576,7 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
       // TODO: configure tensor layout.
       if shape.is_default_nchw() {
         assert!(kernel_desc.set_4d_nchw(
-            sz2int(shape.dst_size[3]),
+            sz2int(shape.dst_size[2]),
             sz2int(shape.src_size[2]),
             sz2int(shape.ker_size[1]),
             sz2int(shape.ker_size[0]),
@@ -651,7 +659,7 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
     conn.sync();
 
     let mut algo_count: i32 = 0;
-    let mut algo_results: [cudnnConvolutionBwdFilterAlgoPerf_t; 10] = unsafe { uninitialized() };
+    let mut algo_results: [cudnnConvolutionBwdFilterAlgoPerf_t; 10] = unsafe { zeroed() };
     {
       let mut stream = conn.cuda_stream();
       let mut cudnn_h = conn.cudnn();
@@ -753,7 +761,7 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
       // TODO: configure tensor layout.
       if shape.is_default_nchw() {
         assert!(kernel_desc.set_4d_nchw(
-            sz2int(shape.dst_size[3]),
+            sz2int(shape.dst_size[2]),
             sz2int(shape.src_size[2]),
             sz2int(shape.ker_size[1]),
             sz2int(shape.ker_size[0]),
@@ -836,7 +844,7 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
     conn.sync();
 
     let mut algo_count: i32 = 0;
-    let mut algo_results: [cudnnConvolutionBwdDataAlgoPerf_t; 10] = unsafe { uninitialized() };
+    let mut algo_results: [cudnnConvolutionBwdDataAlgoPerf_t; 10] = unsafe { zeroed() };
     {
       let mut stream = conn.cuda_stream();
       let mut cudnn_h = conn.cudnn();
