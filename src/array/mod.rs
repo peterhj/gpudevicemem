@@ -670,6 +670,27 @@ impl<Idx, T> DenseArray for GPUDeviceArrayViewMut<Idx, T> where Idx: ArrayIndex,
   }
 }
 
+impl<Idx, T> FlatView for GPUDeviceArrayViewMut<Idx, T> where Idx: ArrayIndex, T: Copy {
+  type FlatViewTy = GPUDeviceArrayView1d<T>;
+
+  fn flat_view(&self) -> Option<GPUDeviceArrayView1d<T>> {
+    if self.is_packed() {
+      // FIXME: use correct flat offset.
+      assert_eq!(self.offset, Idx::zero());
+      let flat_size = self.size.flat_len();
+      Some(GPUDeviceArrayView{
+        base:   self.base,
+        size:   flat_size,
+        offset: 0,
+        stride: flat_size.to_packed_stride(),
+        mem:    self.mem.clone(),
+      })
+    } else {
+      None
+    }
+  }
+}
+
 impl<T> GPUDeviceArrayViewMut1d<T> where T: Copy {
   pub fn view_mut<R>(self, r: R) -> GPUDeviceArrayViewMut1d<T>
   where R: RangeBounds<usize>,
