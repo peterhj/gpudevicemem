@@ -33,6 +33,10 @@ fn sz2uint(sz: usize) -> u32 {
 }
 
 pub trait GPUVectorOps<T> where T: Copy {
+  fn sync_vector_norm(&self, conn: GPUDeviceConn) -> T;
+}
+
+pub trait GPUVectorMutOps<T> where T: Copy {
   fn reduce_sum(&mut self, x: GPUDeviceArrayView2d<T>, axis: isize, conn: GPUDeviceConn);
 
   fn matrix_vector_mult(&mut self,
@@ -41,7 +45,28 @@ pub trait GPUVectorOps<T> where T: Copy {
       conn: GPUDeviceConn);
 }
 
-impl GPUVectorOps<f32> for GPUDeviceArrayViewMut1d<f32> {
+impl GPUVectorOps<f32> for GPUDeviceArrayView1d<f32> {
+  fn sync_vector_norm(&self, conn: GPUDeviceConn) -> f32 {
+    let mut stream = conn.cuda_stream();
+    let mut cublas_h = conn.cublas();
+    assert!(cublas_h.set_stream(&mut stream).is_ok());
+    assert!(cublas_h.set_pointer_mode(CublasPointerMode::Host).is_ok());
+    assert!(cublas_h.set_atomics_mode(CublasAtomicsMode::NotAllowed).is_ok());
+    #[cfg(feature = "cuda9")] {
+      assert!(cublas_h.set_math_mode(CublasMathMode::Default).is_ok());
+    }
+    let mut result: f32 = 0.0;
+    let status = unsafe { cublas_h.nrm2(
+        sz2int(self.size()),
+        self.as_dptr(), sz2int(self.stride()),
+        &mut result as *mut _,
+    ) };
+    assert!(status.is_ok());
+    result
+  }
+}
+
+impl GPUVectorMutOps<f32> for GPUDeviceArrayViewMut1d<f32> {
   fn reduce_sum(&mut self, x: GPUDeviceArrayView2d<f32>, axis: isize, conn: GPUDeviceConn) {
     if self.is_packed() {
       let mut stream = conn.cuda_stream();
@@ -113,7 +138,7 @@ pub fn gpu_matrix_vector_mult<T>(
     mut y: GPUDeviceArrayViewMut1d<T>,
     conn: GPUDeviceConn)
 where T: Copy,
-      GPUDeviceArrayViewMut1d<T>: GPUVectorOps<T>
+      GPUDeviceArrayViewMut1d<T>: GPUVectorMutOps<T>
 {
   y.matrix_vector_mult(w, x, conn);
 }
