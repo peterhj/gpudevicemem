@@ -747,6 +747,8 @@ pub trait GPUDeviceArrayViewMutConstantOpsExt<T>: GPUDeviceArrayViewMutOpsExt wh
   fn set_constant(&mut self, c: T, conn: GPUDeviceConn);
   fn add_constant_inplace(&mut self, c: T, conn: GPUDeviceConn);
   fn mult_constant(&mut self, c: T, x: Self::ViewTy, conn: GPUDeviceConn);
+  fn online_add(&mut self, c: T, x: Self::ViewTy, conn: GPUDeviceConn);
+  fn online_discount(&mut self, c: T, x: Self::ViewTy, conn: GPUDeviceConn);
   fn online_average(&mut self, c: T, x: Self::ViewTy, conn: GPUDeviceConn);
 }
 
@@ -859,6 +861,16 @@ impl<Idx, T> GPUDeviceArrayViewMutConstantOpsExt<T> for GPUDeviceArrayViewMut<Id
     unimplemented!();
   }
 
+  default fn online_add(&mut self, c: T, x: GPUDeviceArrayView<Idx, T>, conn: GPUDeviceConn) {
+    // TODO
+    unimplemented!();
+  }
+
+  default fn online_discount(&mut self, c: T, x: GPUDeviceArrayView<Idx, T>, conn: GPUDeviceConn) {
+    // TODO
+    unimplemented!();
+  }
+
   default fn online_average(&mut self, c: T, x: GPUDeviceArrayView<Idx, T>, conn: GPUDeviceConn) {
     // TODO
     unimplemented!();
@@ -888,6 +900,16 @@ impl<Idx> GPUDeviceArrayViewMutConstantOpsExt<u8> for GPUDeviceArrayViewMut<Idx,
   }
 
   fn mult_constant(&mut self, c: u8, x: GPUDeviceArrayView<Idx, u8>, conn: GPUDeviceConn) {
+    // TODO
+    unimplemented!();
+  }
+
+  fn online_add(&mut self, c: u8, x: GPUDeviceArrayView<Idx, u8>, conn: GPUDeviceConn) {
+    // TODO
+    unimplemented!();
+  }
+
+  fn online_discount(&mut self, c: u8, x: GPUDeviceArrayView<Idx, u8>, conn: GPUDeviceConn) {
     // TODO
     unimplemented!();
   }
@@ -939,6 +961,42 @@ impl<Idx> GPUDeviceArrayViewMutConstantOpsExt<f32> for GPUDeviceArrayViewMut<Idx
       // TODO: error handling.
       let mut stream = conn.cuda_stream();
       unsafe { gpudevicemem_mult_constant_flat_map_f32(
+          len as _,
+          c,
+          x.as_dptr(),
+          self.as_mut_dptr(),
+          conn.cuda_kernel_cfg() as *const _,
+          stream.as_mut_ptr(),
+      ) };
+    } else {
+      unimplemented!();
+    }
+  }
+
+  fn online_add(&mut self, c: f32, x: GPUDeviceArrayView<Idx, f32>, conn: GPUDeviceConn) {
+    if self.is_packed() {
+      let len = self.size.flat_len();
+      // TODO: error handling.
+      let mut stream = conn.cuda_stream();
+      unsafe { gpudevicemem_online_add_flat_map_accum_f32(
+          len as _,
+          c,
+          x.as_dptr(),
+          self.as_mut_dptr(),
+          conn.cuda_kernel_cfg() as *const _,
+          stream.as_mut_ptr(),
+      ) };
+    } else {
+      unimplemented!();
+    }
+  }
+
+  fn online_discount(&mut self, c: f32, x: GPUDeviceArrayView<Idx, f32>, conn: GPUDeviceConn) {
+    if self.is_packed() {
+      let len = self.size.flat_len();
+      // TODO: error handling.
+      let mut stream = conn.cuda_stream();
+      unsafe { gpudevicemem_online_discount_flat_map_accum_f32(
           len as _,
           c,
           x.as_dptr(),
