@@ -741,6 +741,7 @@ pub trait GPUDeviceArrayViewMutOpsExt {
   fn fill_random(&mut self, rng: &mut CurandGenerator, conn: GPUDeviceConn);
   fn copy(&mut self, src: Self::ViewTy, conn: GPUDeviceConn);
   fn add(&mut self, x: Self::ViewTy, conn: GPUDeviceConn);
+  fn mult(&mut self, x: Self::ViewTy, conn: GPUDeviceConn);
 }
 
 pub trait GPUDeviceArrayViewMutConstantOpsExt<T>: GPUDeviceArrayViewMutOpsExt where T: Copy {
@@ -788,6 +789,11 @@ impl<Idx, T> GPUDeviceArrayViewMutOpsExt for GPUDeviceArrayViewMut<Idx, T> where
     // TODO
     unimplemented!();
   }
+
+  default fn mult(&mut self, x: GPUDeviceArrayView<Idx, T>, conn: GPUDeviceConn) {
+    // TODO
+    unimplemented!();
+  }
 }
 
 impl<Idx, T> GPUDeviceArrayViewMutOpsExt for GPUDeviceArrayViewMut<Idx, T> where Idx: ArrayIndex, T: ZeroBits + Copy {
@@ -810,6 +816,10 @@ impl<Idx, T> GPUDeviceArrayViewMutOpsExt for GPUDeviceArrayViewMut<Idx, T> where
   default fn add(&mut self, x: GPUDeviceArrayView<Idx, T>, conn: GPUDeviceConn) {
     unimplemented!();
   }
+
+  default fn mult(&mut self, x: GPUDeviceArrayView<Idx, T>, conn: GPUDeviceConn) {
+    unimplemented!();
+  }
 }
 
 impl<Idx> GPUDeviceArrayViewMutOpsExt for GPUDeviceArrayViewMut<Idx, f32> where Idx: ArrayIndex {
@@ -819,6 +829,23 @@ impl<Idx> GPUDeviceArrayViewMutOpsExt for GPUDeviceArrayViewMut<Idx, f32> where 
       // TODO: error handling.
       let mut stream = conn.cuda_stream();
       unsafe { gpudevicemem_flat_add_inplace_f32(
+          len as _,
+          x.as_dptr(),
+          self.as_mut_dptr(),
+          conn.cuda_kernel_cfg() as *const _,
+          stream.as_mut_ptr(),
+      ) };
+    } else {
+      unimplemented!();
+    }
+  }
+
+  fn mult(&mut self, x: GPUDeviceArrayView<Idx, f32>, conn: GPUDeviceConn) {
+    if self.is_packed() {
+      let len = self.size.flat_len();
+      // TODO: error handling.
+      let mut stream = conn.cuda_stream();
+      unsafe { gpudevicemem_flat_mult_inplace_f32(
           len as _,
           x.as_dptr(),
           self.as_mut_dptr(),

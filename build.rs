@@ -67,6 +67,7 @@ fn main() {
     .whitelist_function("gpudevicemem_bcast_flat_mult_add_I1b_I2abc_I3b_Oabc_packed_f32")
     // "flat_linear.cu"
     .whitelist_function("gpudevicemem_flat_add_inplace_f32")
+    .whitelist_function("gpudevicemem_flat_mult_inplace_f32")
     .whitelist_function("gpudevicemem_flat_mult_f32")
     .whitelist_function("gpudevicemem_flat_mult_add_f32")
     // "flat_map.cu"

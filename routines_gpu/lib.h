@@ -120,6 +120,12 @@ void gpudevicemem_flat_add_inplace_f32(
     float *y,
     const struct KernelConfig *cfg,
     struct CUstream_st *stream);
+void gpudevicemem_flat_mult_inplace_f32(
+    uint32_t len,
+    const float *x,
+    float *y,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream);
 void gpudevicemem_flat_mult_f32(
     uint32_t len,
     const float *lx,
