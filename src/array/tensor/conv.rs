@@ -496,7 +496,7 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
         ).is_ok());
         assert!(bias_desc.set_4d_nchw(
             1,
-            sz2int(shape.dst_size[3]),
+            sz2int(shape.dst_size[2]),
             1,
             1,
         ).is_ok());
@@ -950,6 +950,13 @@ pub trait GPUBatchLTransConvOps<WTy: Copy, XTy: Copy, YTy: Copy> {
       y: GPUDeviceArrayView4d<YTy>,
       workspace: GPUDeviceArrayViewMut1d<u8>,
       conn: GPUDeviceConn);
+  fn batch_left_transpose_conv2d_accumulate(&mut self,
+      cfg: &XGPUConvBwdXConfig,
+      state: &mut XGPUConvState<WTy, XTy, YTy>,
+      w: GPUDeviceArrayView4d<WTy>,
+      y: GPUDeviceArrayView4d<YTy>,
+      workspace: GPUDeviceArrayViewMut1d<u8>,
+      conn: GPUDeviceConn);
 }
 
 pub trait GPUBatchOuterConvOps<WTy: Copy, XTy: Copy, YTy: Copy> {
@@ -1070,7 +1077,10 @@ where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
             &mut state.bias_desc,
             self.as_mut_dptr(),
         ) };
-        assert!(status.is_ok());
+        match status {
+          Ok(_) => {}
+          Err(e) => panic!("FATAL: batch_conv2d_reduce_bwd: {:?}", e),
+        }
       }
       //_ => unimplemented!(),
     }
@@ -1096,6 +1106,41 @@ where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
         assert!(cudnn_h.set_stream(&mut stream).is_ok());
         let alpha: <CudnnHandle as CudnnConvExt<WTy, XTy, YTy>>::HostScalar = PseudoField::one();
         let beta: <CudnnHandle as CudnnConvExt<WTy, XTy, YTy>>::HostScalar = PseudoRing::zero();
+        let status = unsafe { cudnn_h.conv_bwd_data(
+            alpha,
+            &mut state.kernel_desc,
+            w.as_dptr(),
+            &mut state.dst_desc,
+            y.as_dptr(),
+            &mut state.conv_desc,
+            cfg.algo_desc,
+            workspace.as_mut_dptr(),
+            workspace.size(),
+            beta,
+            &mut state.src_desc,
+            self.as_mut_dptr(),
+        ) };
+        assert!(status.is_ok());
+      }
+      //_ => unimplemented!(),
+    }
+  }
+
+  fn batch_left_transpose_conv2d_accumulate(&mut self,
+      cfg: &XGPUConvBwdXConfig,
+      state: &mut XGPUConvState<WTy, XTy, YTy>,
+      w: GPUDeviceArrayView4d<WTy>,
+      y: GPUDeviceArrayView4d<YTy>,
+      workspace: GPUDeviceArrayViewMut1d<u8>,
+      conn: GPUDeviceConn)
+  {
+    match (cfg, state) {
+      (&XGPUConvBwdXConfig::Cudnn(ref cfg), &mut XGPUConvState::Cudnn(ref mut state)) => {
+        let mut stream = conn.cuda_stream();
+        let mut cudnn_h = conn.cudnn();
+        assert!(cudnn_h.set_stream(&mut stream).is_ok());
+        let alpha: <CudnnHandle as CudnnConvExt<WTy, XTy, YTy>>::HostScalar = PseudoField::one();
+        let beta: <CudnnHandle as CudnnConvExt<WTy, XTy, YTy>>::HostScalar = PseudoField::one();
         let status = unsafe { cudnn_h.conv_bwd_data(
             alpha,
             &mut state.kernel_desc,

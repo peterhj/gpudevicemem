@@ -371,7 +371,8 @@ impl<'a> GPUDeviceConn<'a> {
   }
 
   pub fn sync(&self) {
-    let status = self.cuda_stream().synchronize();
+    let mut stream = self.cuda_stream();
+    let status = stream.synchronize();
     match status {
       Err(e) => panic!("GPUDeviceConn: sync error: {:?} {}", e, e.get_string()),
       Ok(_) => {}
