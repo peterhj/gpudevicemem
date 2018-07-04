@@ -285,6 +285,7 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
   let mut conv_desc = CudnnConvDesc::create().unwrap();
   match conv_shape {
     XConvFullShape::Conv2d(shape) => {
+      // TODO: configure tensor layout.
       if shape.is_default_nchw() {
         assert!(kernel_desc.set_4d_nchw(
             sz2int(shape.dst_size[2]),
@@ -306,7 +307,7 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
         ).is_ok());
         assert!(bias_desc.set_4d_nchw(
             1,
-            sz2int(shape.dst_size[3]),
+            sz2int(shape.dst_size[2]),
             1,
             1,
         ).is_ok());
@@ -595,7 +596,7 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
         ).is_ok());
         assert!(bias_desc.set_4d_nchw(
             1,
-            sz2int(shape.dst_size[3]),
+            sz2int(shape.dst_size[2]),
             1,
             1,
         ).is_ok());
@@ -676,6 +677,7 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
       ) };
       assert_eq!(status, cudnnStatus_t_CUDNN_STATUS_SUCCESS);
     }
+    println!("DEBUG: query_gpu_conv_bwd_w_algo: algos found: {}", algo_count);
     let mut found_k = None;
     for k in 0 .. algo_count as usize {
       if algo_results[k].status != cudnnStatus_t_CUDNN_STATUS_SUCCESS {
@@ -710,6 +712,7 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
           continue;
         }
       }
+      println!("DEBUG: query_gpu_conv_bwd_w_algo:   algo: {} accepted", k);
       found_k = Some(k);
       break;
     }
@@ -780,7 +783,7 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
         ).is_ok());
         assert!(bias_desc.set_4d_nchw(
             1,
-            sz2int(shape.dst_size[3]),
+            sz2int(shape.dst_size[2]),
             1,
             1,
         ).is_ok());
@@ -861,6 +864,7 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
       ) };
       assert_eq!(status, cudnnStatus_t_CUDNN_STATUS_SUCCESS);
     }
+    println!("DEBUG: query_gpu_conv_bwd_x_algo: algos found: {}", algo_count);
     let mut found_k = None;
     for k in 0 .. algo_count as usize {
       if algo_results[k].status != cudnnStatus_t_CUDNN_STATUS_SUCCESS {
@@ -895,6 +899,7 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
           continue;
         }
       }
+      println!("DEBUG: query_gpu_conv_bwd_x_algo:   algo: {} accepted", k);
       found_k = Some(k);
       break;
     }

@@ -29,6 +29,7 @@ extern crate float;
 extern crate memarray;
 extern crate parking_lot;
 
+use config::{CONFIG};
 use ffi::routines_gpu::{KernelConfig};
 
 //use cuda::ffi::runtime::{cudaError_t, cudaStream_t, cudaDeviceProp};
@@ -50,6 +51,7 @@ use std::sync::{Arc};
 use std::sync::atomic::{ATOMIC_USIZE_INIT, AtomicUsize, Ordering};
 
 pub mod array;
+pub mod config;
 pub mod ffi;
 pub mod utils;
 
@@ -111,8 +113,13 @@ impl Deref for LazyCudaStream {
 impl DerefMut for LazyCudaStream {
   fn deref_mut(&mut self) -> &mut CudaStream {
     if self.h.is_none() {
-      self.h = Some(CudaStream::default());
-      //self.h = Some(CudaStream::create().unwrap());
+      self.h = match CONFIG.default_stream {
+        false => match CudaStream::create() {
+          Err(e) => panic!("LazyCudaStream: failed to create cuda stream: {:?}", e),
+          Ok(h) => Some(h),
+        },
+        true  => Some(CudaStream::default()),
+      };
     }
     self.h.as_mut().unwrap()
   }
