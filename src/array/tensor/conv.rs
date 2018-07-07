@@ -104,21 +104,22 @@ impl XConvFullShape {
   }
 }
 
-pub type Conv1dFullShape = ConvFullShape<usize, [usize; 3]>;
-pub type Conv2dFullShape = ConvFullShape<[usize; 2], [usize; 4]>;
-pub type Conv3dFullShape = ConvFullShape<[usize; 3], [usize; 5]>;
+pub type Conv1dFullShape = ConvFullShape<isize, usize, [usize; 3]>;
+pub type Conv2dFullShape = ConvFullShape<[isize; 2], [usize; 2], [usize; 4]>;
+pub type Conv3dFullShape = ConvFullShape<[isize; 3], [usize; 3], [usize; 5]>;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub struct ConvFullShape<WIdx, XIdx> {
-  pub src_space_axes:   [isize; 2],
+pub struct ConvFullShape<Axes, WIdx, XIdx> {
+  pub src_space_axes:   Axes,
   pub src_feature_axis: isize,
   pub src_batch_axis:   isize,
   pub src_size: XIdx,
-  pub dst_space_axes:   [isize; 2],
+  pub dst_space_axes:   Axes,
   pub dst_feature_axis: isize,
   pub dst_batch_axis:   isize,
   pub dst_size: XIdx,
-  pub ker_space_axes:   [isize; 2],
+  pub ker_space_axes:   Axes,
+  //pub ker_input_axis:   isize,
   pub ker_output_axis:  isize,
   pub ker_size: WIdx,
   pub dilation: WIdx,
@@ -155,6 +156,42 @@ impl Conv2dFullShape {
     &&  self.dst_space_axes[1] == 2
     &&  self.dst_feature_axis == 0
     &&  self.dst_batch_axis == 3
+  }
+}
+
+impl Conv3dFullShape {
+  pub fn is_default_ncdhw(&self) -> bool {
+        self.ker_space_axes[0] == 0
+    &&  self.ker_space_axes[1] == 1
+    &&  self.ker_space_axes[2] == 2
+    &&  self.ker_output_axis == 4
+    &&  self.src_space_axes[0] == 0
+    &&  self.src_space_axes[1] == 1
+    &&  self.src_space_axes[2] == 2
+    &&  self.src_feature_axis == 3
+    &&  self.src_batch_axis == 4
+    &&  self.dst_space_axes[0] == 0
+    &&  self.dst_space_axes[1] == 1
+    &&  self.dst_space_axes[2] == 2
+    &&  self.dst_feature_axis == 3
+    &&  self.dst_batch_axis == 4
+  }
+
+  pub fn is_default_ndhwc(&self) -> bool {
+        self.ker_space_axes[0] == 0
+    &&  self.ker_space_axes[1] == 1
+    &&  self.ker_space_axes[2] == 2
+    &&  self.ker_output_axis == 4
+    &&  self.src_space_axes[0] == 1
+    &&  self.src_space_axes[1] == 2
+    &&  self.src_space_axes[1] == 3
+    &&  self.src_feature_axis == 0
+    &&  self.src_batch_axis == 4
+    &&  self.dst_space_axes[0] == 1
+    &&  self.dst_space_axes[1] == 2
+    &&  self.dst_space_axes[2] == 3
+    &&  self.dst_feature_axis == 0
+    &&  self.dst_batch_axis == 4
   }
 }
 
@@ -333,6 +370,10 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
       if shape.groups > 1 {
         assert!(conv_desc.set_group_count(sz2int(shape.groups)).is_ok());
       }
+    }
+    XConvFullShape::Conv3d(shape) => {
+      // FIXME
+      unimplemented!();
     }
     _ => unimplemented!(),
   }
@@ -524,6 +565,10 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
         assert!(conv_desc.set_group_count(sz2int(shape.groups)).is_ok());
       }
     }
+    XConvFullShape::Conv3d(shape) => {
+      // FIXME
+      unimplemented!();
+    }
     _ => unimplemented!(),
   }
   match math_mode {
@@ -622,6 +667,10 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
       if shape.groups > 1 {
         assert!(conv_desc.set_group_count(sz2int(shape.groups)).is_ok());
       }
+    }
+    XConvFullShape::Conv3d(shape) => {
+      // FIXME
+      unimplemented!();
     }
     _ => unimplemented!(),
   }
@@ -810,6 +859,10 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
         assert!(conv_desc.set_group_count(sz2int(shape.groups)).is_ok());
       }
     }
+    XConvFullShape::Conv3d(shape) => {
+      // FIXME
+      unimplemented!();
+    }
     _ => unimplemented!(),
   }
   match math_mode {
@@ -937,6 +990,25 @@ pub trait GPUBatchConvOps<WTy: Copy, XTy: Copy, YTy: Copy> {
       b: GPUDeviceArrayView1d<WTy>,
       workspace: GPUDeviceArrayViewMut1d<u8>,
       conn: GPUDeviceConn);
+  fn batch_conv3d(&mut self,
+      cfg: &XGPUConvFwdConfig,
+      state: &mut XGPUConvState<WTy, XTy, YTy>,
+      w: GPUDeviceArrayView5d<WTy>,
+      x: GPUDeviceArrayView5d<XTy>,
+      workspace: GPUDeviceArrayViewMut1d<u8>,
+      conn: GPUDeviceConn)
+  { unimplemented!(); }
+  fn batch_conv3d_affine(&mut self,
+      cfg: &XGPUConvFwdConfig,
+      state: &mut XGPUConvState<WTy, XTy, YTy>,
+      alpha: f32,
+      w: GPUDeviceArrayView5d<WTy>,
+      x: GPUDeviceArrayView5d<XTy>,
+      b: GPUDeviceArrayView1d<WTy>,
+      beta: f32,
+      workspace: GPUDeviceArrayViewMut1d<u8>,
+      conn: GPUDeviceConn)
+  { unimplemented!(); }
 }
 
 pub trait GPUBatchConvReduceOps<WTy: Copy, XTy: Copy, YTy: Copy> {
@@ -945,6 +1017,13 @@ pub trait GPUBatchConvReduceOps<WTy: Copy, XTy: Copy, YTy: Copy> {
       state: &mut XGPUConvState<WTy, XTy, YTy>,
       dy: GPUDeviceArrayView4d<YTy>,
       conn: GPUDeviceConn);
+  fn batch_conv3d_reduce_bwd(&mut self,
+      state: &mut XGPUConvState<WTy, XTy, YTy>,
+      alpha: f32,
+      dy: GPUDeviceArrayView5d<YTy>,
+      beta: f32,
+      conn: GPUDeviceConn)
+  { unimplemented!(); }
 }
 
 pub trait GPUBatchLTransConvOps<WTy: Copy, XTy: Copy, YTy: Copy> {
@@ -962,6 +1041,16 @@ pub trait GPUBatchLTransConvOps<WTy: Copy, XTy: Copy, YTy: Copy> {
       y: GPUDeviceArrayView4d<YTy>,
       workspace: GPUDeviceArrayViewMut1d<u8>,
       conn: GPUDeviceConn);
+  fn batch_left_transpose_conv3d(&mut self,
+      cfg: &XGPUConvBwdXConfig,
+      state: &mut XGPUConvState<WTy, XTy, YTy>,
+      alpha: f32,
+      w: GPUDeviceArrayView5d<WTy>,
+      y: GPUDeviceArrayView5d<YTy>,
+      beta: f32,
+      workspace: GPUDeviceArrayViewMut1d<u8>,
+      conn: GPUDeviceConn)
+  { unimplemented!(); }
 }
 
 pub trait GPUBatchOuterConvOps<WTy: Copy, XTy: Copy, YTy: Copy> {
@@ -972,6 +1061,16 @@ pub trait GPUBatchOuterConvOps<WTy: Copy, XTy: Copy, YTy: Copy> {
       x: GPUDeviceArrayView4d<XTy>,
       workspace: GPUDeviceArrayViewMut1d<u8>,
       conn: GPUDeviceConn);
+  fn batch_outer_conv3d(&mut self,
+      cfg: &XGPUConvBwdWConfig,
+      state: &mut XGPUConvState<WTy, XTy, YTy>,
+      alpha: f32,
+      y: GPUDeviceArrayView5d<YTy>,
+      x: GPUDeviceArrayView5d<XTy>,
+      beta: f32,
+      workspace: GPUDeviceArrayViewMut1d<u8>,
+      conn: GPUDeviceConn)
+  { unimplemented!(); }
 }
 
 impl<WTy: Copy, XTy: Copy, YTy: Copy> GPUBatchConvOps<WTy, XTy, YTy> for GPUDeviceArrayViewMut4d<YTy>
