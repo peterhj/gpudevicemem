@@ -18,10 +18,11 @@ use ::{GPUDeviceId, GPUDeviceConn};
 use ::array::*;
 use ::array::tensor::conv::*;
 
-use arithmetic::{PseudoField, PseudoRing};
+//use arithmetic::{PseudoField, PseudoRing};
 use cuda_dnn::*;
 use cuda_dnn::ffi::*;
 use float::stub::*;
+use num_traits::identities::*;
 
 use std::collections::{HashMap};
 use std::mem::{uninitialized};
@@ -140,7 +141,7 @@ pub trait GPUBatchSoftmaxOps<T: Copy> {
 
 impl<T: Copy> GPUBatchSoftmaxOps<T> for GPUDeviceArrayViewMut2d<T>
 where CudnnHandle: CudnnSoftmaxExt<T>,
-      <CudnnHandle as CudnnSoftmaxExt<T>>::HostScalar: PseudoField,
+      <CudnnHandle as CudnnSoftmaxExt<T>>::HostScalar: Zero + One,
 {
   fn batch_softmax(&mut self,
       state: &mut XGPUSoftmaxState<T>,
@@ -152,8 +153,8 @@ where CudnnHandle: CudnnSoftmaxExt<T>,
         let mut stream = conn.cuda_stream();
         let mut cudnn_h = conn.cudnn();
         assert!(cudnn_h.set_stream(&mut stream).is_ok());
-        let alpha: <CudnnHandle as CudnnSoftmaxExt<T>>::HostScalar = PseudoField::one();
-        let beta: <CudnnHandle as CudnnSoftmaxExt<T>>::HostScalar = PseudoRing::zero();
+        let alpha: <CudnnHandle as CudnnSoftmaxExt<T>>::HostScalar = one();
+        let beta: <CudnnHandle as CudnnSoftmaxExt<T>>::HostScalar = zero();
         let status = unsafe { cudnn_h.softmax_fwd(
             cudnnSoftmaxAlgorithm_t_CUDNN_SOFTMAX_ACCURATE,
             cudnnSoftmaxMode_t_CUDNN_SOFTMAX_MODE_INSTANCE,
@@ -181,8 +182,8 @@ where CudnnHandle: CudnnSoftmaxExt<T>,
         let mut stream = conn.cuda_stream();
         let mut cudnn_h = conn.cudnn();
         assert!(cudnn_h.set_stream(&mut stream).is_ok());
-        let alpha: <CudnnHandle as CudnnSoftmaxExt<T>>::HostScalar = PseudoField::one();
-        let beta: <CudnnHandle as CudnnSoftmaxExt<T>>::HostScalar = PseudoRing::zero();
+        let alpha: <CudnnHandle as CudnnSoftmaxExt<T>>::HostScalar = one();
+        let beta: <CudnnHandle as CudnnSoftmaxExt<T>>::HostScalar = zero();
         let status = unsafe { cudnn_h.softmax_bwd(
             cudnnSoftmaxAlgorithm_t_CUDNN_SOFTMAX_ACCURATE,
             cudnnSoftmaxMode_t_CUDNN_SOFTMAX_MODE_INSTANCE,

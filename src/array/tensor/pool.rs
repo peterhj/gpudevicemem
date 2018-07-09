@@ -18,10 +18,11 @@ use ::{GPUDeviceId, GPUDeviceConn};
 use ::array::*;
 use ::array::tensor::conv::*;
 
-use arithmetic::{PseudoField, PseudoRing};
+//use arithmetic::{PseudoField, PseudoRing};
 use cuda_dnn::*;
 use cuda_dnn::ffi::*;
 use float::stub::*;
+use num_traits::identities::*;
 
 use std::collections::{HashMap};
 use std::mem::{uninitialized};
@@ -194,7 +195,7 @@ pub trait GPUBatchPoolOps<T: Copy> {
 
 impl<T: Copy> GPUBatchPoolOps<T> for GPUDeviceArrayViewMut4d<T>
 where CudnnHandle: CudnnPoolExt<T>,
-      <CudnnHandle as CudnnPoolExt<T>>::HostScalar: PseudoField,
+      <CudnnHandle as CudnnPoolExt<T>>::HostScalar: Zero + One,
 {
   fn batch_pool2d(&mut self,
       state: &mut XGPUPoolState<T>,
@@ -206,8 +207,8 @@ where CudnnHandle: CudnnPoolExt<T>,
         let mut stream = conn.cuda_stream();
         let mut cudnn_h = conn.cudnn();
         assert!(cudnn_h.set_stream(&mut stream).is_ok());
-        let alpha: <CudnnHandle as CudnnPoolExt<T>>::HostScalar = PseudoField::one();
-        let beta: <CudnnHandle as CudnnPoolExt<T>>::HostScalar = PseudoRing::zero();
+        let alpha: <CudnnHandle as CudnnPoolExt<T>>::HostScalar = one();
+        let beta: <CudnnHandle as CudnnPoolExt<T>>::HostScalar = zero();
         let status = unsafe { cudnn_h.pool_fwd(
             &mut state.pool_desc,
             alpha,
@@ -235,8 +236,8 @@ where CudnnHandle: CudnnPoolExt<T>,
         let mut stream = conn.cuda_stream();
         let mut cudnn_h = conn.cudnn();
         assert!(cudnn_h.set_stream(&mut stream).is_ok());
-        let alpha: <CudnnHandle as CudnnPoolExt<T>>::HostScalar = PseudoField::one();
-        let beta: <CudnnHandle as CudnnPoolExt<T>>::HostScalar = PseudoRing::zero();
+        let alpha: <CudnnHandle as CudnnPoolExt<T>>::HostScalar = one();
+        let beta: <CudnnHandle as CudnnPoolExt<T>>::HostScalar = zero();
         let status = unsafe { cudnn_h.pool_bwd(
             &mut state.pool_desc,
             alpha,

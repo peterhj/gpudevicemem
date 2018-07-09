@@ -18,7 +18,7 @@ limitations under the License.
 #![feature(specialization)]
 //#![feature(trait_alias)]
 
-extern crate arithmetic;
+//extern crate arithmetic;
 extern crate arrayidx;
 extern crate cuda;
 extern crate cuda_blas;
@@ -27,6 +27,7 @@ extern crate cuda_rand;
 extern crate float;
 #[macro_use] extern crate lazy_static;
 extern crate memarray;
+extern crate num_traits;
 extern crate parking_lot;
 
 use config::{CONFIG};

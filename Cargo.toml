@@ -17,7 +17,7 @@ cc = "*"
 walkdir = "*"
 
 [dependencies]
-arithmetic = { path = "../arithmetic" }
+#arithmetic = { path = "../arithmetic" }
 arrayidx = { path = "../arrayidx" }
 cuda = { path = "../libcuda" }
 cuda_blas = { path = "../cuda_blas" }
@@ -26,6 +26,7 @@ cuda_rand = { path = "../cuda_rand" }
 float = { path = "../libfloat" }
 lazy_static = "*"
 memarray = { path = "../memarray" }
+num-traits = "*"
 #parking_lot = { path = "../parking_lot" }
 #parking_lot = "*"
 parking_lot = { version = "^0.5", features = ["nightly"] }
