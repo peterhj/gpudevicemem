@@ -54,17 +54,17 @@ impl XPoolFullShape {
   }
 }
 
-pub type Pool1dFullShape = PoolFullShape<usize, [usize; 3]>;
-pub type Pool2dFullShape = PoolFullShape<[usize; 2], [usize; 4]>;
-pub type Pool3dFullShape = PoolFullShape<[usize; 3], [usize; 5]>;
+pub type Pool1dFullShape = PoolFullShape<isize, usize, [usize; 3]>;
+pub type Pool2dFullShape = PoolFullShape<[isize; 2], [usize; 2], [usize; 4]>;
+pub type Pool3dFullShape = PoolFullShape<[isize; 3], [usize; 3], [usize; 5]>;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub struct PoolFullShape<WIdx, XIdx> {
-  pub src_space_axes:   [isize; 2],
+pub struct PoolFullShape<Axes, WIdx, XIdx> {
+  pub src_space_axes:   Axes,
   pub src_feature_axis: isize,
   pub src_batch_axis:   isize,
   pub src_size: XIdx,
-  pub dst_space_axes:   [isize; 2],
+  pub dst_space_axes:   Axes,
   pub dst_feature_axis: isize,
   pub dst_batch_axis:   isize,
   pub dst_size: XIdx,
@@ -94,6 +94,21 @@ impl Pool2dFullShape {
     &&  self.dst_space_axes[1] == 2
     &&  self.dst_feature_axis == 0
     &&  self.dst_batch_axis == 3
+  }
+}
+
+impl Pool3dFullShape {
+  pub fn is_default_ncdhw(&self) -> bool {
+        self.src_space_axes[0] == 0
+    &&  self.src_space_axes[1] == 1
+    &&  self.src_space_axes[2] == 2
+    &&  self.src_feature_axis == 3
+    &&  self.src_batch_axis == 4
+    &&  self.dst_space_axes[0] == 0
+    &&  self.dst_space_axes[1] == 1
+    &&  self.dst_space_axes[2] == 2
+    &&  self.dst_feature_axis == 3
+    &&  self.dst_batch_axis == 4
   }
 }
 
@@ -180,7 +195,7 @@ where T: GPUDataTyped + CudnnDataTypeExt,
   }));
 }
 
-pub trait GPUBatchPoolOps<T: Copy> {
+pub trait GPUBatchPoolOps<T: Copy> where CudnnHandle: CudnnPoolExt<T> {
   fn batch_pool2d(&mut self,
       state: &mut XGPUPoolState<T>,
       x: GPUDeviceArrayView4d<T>,
@@ -190,6 +205,26 @@ pub trait GPUBatchPoolOps<T: Copy> {
       y: GPUDeviceArrayView4d<T>,
       dy: GPUDeviceArrayView4d<T>,
       x: GPUDeviceArrayView4d<T>,
+      conn: GPUDeviceConn);
+}
+
+pub trait GPUBatchPool3dOps<T: Copy>
+where CudnnHandle: CudnnPoolExt<T>,
+      <CudnnHandle as CudnnPoolExt<T>>::HostScalar: Zero + One,
+{
+  fn batch_pool3d(&mut self,
+      state: &mut XGPUPoolState<T>,
+      alpha: <CudnnHandle as CudnnPoolExt<T>>::HostScalar,
+      x: GPUDeviceArrayView5d<T>,
+      beta: <CudnnHandle as CudnnPoolExt<T>>::HostScalar,
+      conn: GPUDeviceConn);
+  fn batch_pool3d_bwd(&mut self,
+      state: &mut XGPUPoolState<T>,
+      alpha: <CudnnHandle as CudnnPoolExt<T>>::HostScalar,
+      y: GPUDeviceArrayView5d<T>,
+      dy: GPUDeviceArrayView5d<T>,
+      x: GPUDeviceArrayView5d<T>,
+      beta: <CudnnHandle as CudnnPoolExt<T>>::HostScalar,
       conn: GPUDeviceConn);
 }
 
@@ -238,6 +273,71 @@ where CudnnHandle: CudnnPoolExt<T>,
         assert!(cudnn_h.set_stream(&mut stream).is_ok());
         let alpha: <CudnnHandle as CudnnPoolExt<T>>::HostScalar = one();
         let beta: <CudnnHandle as CudnnPoolExt<T>>::HostScalar = zero();
+        let status = unsafe { cudnn_h.pool_bwd(
+            &mut state.pool_desc,
+            alpha,
+            &mut state.dst_desc,
+            y.as_dptr(),
+            &mut state.dst2_desc,
+            dy.as_dptr(),
+            &mut state.src_desc,
+            x.as_dptr(),
+            beta,
+            &mut state.src2_desc,
+            self.as_mut_dptr(),
+        ) };
+        assert!(status.is_ok());
+      }
+      //_ => unimplemented!(),
+    }
+  }
+}
+
+impl<T: Copy> GPUBatchPool3dOps<T> for GPUDeviceArrayViewMut5d<T>
+where CudnnHandle: CudnnPoolExt<T>,
+      <CudnnHandle as CudnnPoolExt<T>>::HostScalar: Zero + One,
+{
+  fn batch_pool3d(&mut self,
+      state: &mut XGPUPoolState<T>,
+      alpha: <CudnnHandle as CudnnPoolExt<T>>::HostScalar,
+      x: GPUDeviceArrayView5d<T>,
+      beta: <CudnnHandle as CudnnPoolExt<T>>::HostScalar,
+      conn: GPUDeviceConn)
+  {
+    match state {
+      &mut XGPUPoolState::Cudnn(ref mut state) => {
+        let mut stream = conn.cuda_stream();
+        let mut cudnn_h = conn.cudnn();
+        assert!(cudnn_h.set_stream(&mut stream).is_ok());
+        let status = unsafe { cudnn_h.pool_fwd(
+            &mut state.pool_desc,
+            alpha,
+            &mut state.src_desc,
+            x.as_dptr(),
+            beta,
+            &mut state.dst_desc,
+            self.as_mut_dptr(),
+        ) };
+        assert!(status.is_ok());
+      }
+      //_ => unimplemented!(),
+    }
+  }
+
+  fn batch_pool3d_bwd(&mut self,
+      state: &mut XGPUPoolState<T>,
+      alpha: <CudnnHandle as CudnnPoolExt<T>>::HostScalar,
+      y: GPUDeviceArrayView5d<T>,
+      dy: GPUDeviceArrayView5d<T>,
+      x: GPUDeviceArrayView5d<T>,
+      beta: <CudnnHandle as CudnnPoolExt<T>>::HostScalar,
+      conn: GPUDeviceConn)
+  {
+    match state {
+      &mut XGPUPoolState::Cudnn(ref mut state) => {
+        let mut stream = conn.cuda_stream();
+        let mut cudnn_h = conn.cudnn();
+        assert!(cudnn_h.set_stream(&mut stream).is_ok());
         let status = unsafe { cudnn_h.pool_bwd(
             &mut state.pool_desc,
             alpha,

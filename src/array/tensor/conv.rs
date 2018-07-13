@@ -1193,6 +1193,9 @@ pub trait GPUBatchConvOps<WTy: Copy, XTy: Copy, YTy: Copy> where CudnnHandle: Cu
       b: GPUDeviceArrayView1d<WTy>,
       workspace: GPUDeviceArrayViewMut1d<u8>,
       conn: GPUDeviceConn);
+}
+
+pub trait GPUBatchConv3dOps<WTy: Copy, XTy: Copy, YTy: Copy> where CudnnHandle: CudnnConvExt<WTy, XTy, YTy> {
   fn batch_conv3d(&mut self,
       cfg: &XGPUConvFwdConfig,
       state: &mut XGPUConvState<WTy, XTy, YTy>,
@@ -1221,6 +1224,9 @@ pub trait GPUBatchConvReduceOps<WTy: Copy, XTy: Copy, YTy: Copy> where CudnnHand
       state: &mut XGPUConvState<WTy, XTy, YTy>,
       dy: GPUDeviceArrayView4d<YTy>,
       conn: GPUDeviceConn);
+}
+
+pub trait GPUBatchConv3dReduceOps<WTy: Copy, XTy: Copy, YTy: Copy> where CudnnHandle: CudnnConvExt<WTy, XTy, YTy> {
   fn batch_conv3d_reduce_bwd(&mut self,
       state: &mut XGPUConvState<WTy, XTy, YTy>,
       alpha: <CudnnHandle as CudnnConvExt<WTy, XTy, YTy>>::HostScalar,
@@ -1244,6 +1250,9 @@ pub trait GPUBatchLTransConvOps<WTy: Copy, XTy: Copy, YTy: Copy> where CudnnHand
       y: GPUDeviceArrayView4d<YTy>,
       workspace: GPUDeviceArrayViewMut1d<u8>,
       conn: GPUDeviceConn);
+}
+
+pub trait GPUBatchLTransConv3dOps<WTy: Copy, XTy: Copy, YTy: Copy> where CudnnHandle: CudnnConvExt<WTy, XTy, YTy> {
   fn batch_left_transpose_conv3d(&mut self,
       cfg: &XGPUConvBwdXConfig,
       state: &mut XGPUConvState<WTy, XTy, YTy>,
@@ -1252,8 +1261,7 @@ pub trait GPUBatchLTransConvOps<WTy: Copy, XTy: Copy, YTy: Copy> where CudnnHand
       y: GPUDeviceArrayView5d<YTy>,
       beta: <CudnnHandle as CudnnConvExt<WTy, XTy, YTy>>::HostScalar,
       workspace: GPUDeviceArrayViewMut1d<u8>,
-      conn: GPUDeviceConn)
-  { unimplemented!(); }
+      conn: GPUDeviceConn);
 }
 
 pub trait GPUBatchOuterConvOps<WTy: Copy, XTy: Copy, YTy: Copy> where CudnnHandle: CudnnConvExt<WTy, XTy, YTy> {
@@ -1264,6 +1272,9 @@ pub trait GPUBatchOuterConvOps<WTy: Copy, XTy: Copy, YTy: Copy> where CudnnHandl
       x: GPUDeviceArrayView4d<XTy>,
       workspace: GPUDeviceArrayViewMut1d<u8>,
       conn: GPUDeviceConn);
+}
+
+pub trait GPUBatchOuterConv3dOps<WTy: Copy, XTy: Copy, YTy: Copy> where CudnnHandle: CudnnConvExt<WTy, XTy, YTy> {
   fn batch_outer_conv3d(&mut self,
       cfg: &XGPUConvBwdWConfig,
       state: &mut XGPUConvState<WTy, XTy, YTy>,
@@ -1272,13 +1283,11 @@ pub trait GPUBatchOuterConvOps<WTy: Copy, XTy: Copy, YTy: Copy> where CudnnHandl
       x: GPUDeviceArrayView5d<XTy>,
       beta: <CudnnHandle as CudnnConvExt<WTy, XTy, YTy>>::HostScalar,
       workspace: GPUDeviceArrayViewMut1d<u8>,
-      conn: GPUDeviceConn)
-  { unimplemented!(); }
+      conn: GPUDeviceConn);
 }
 
 impl<WTy: Copy, XTy: Copy, YTy: Copy> GPUBatchConvOps<WTy, XTy, YTy> for GPUDeviceArrayViewMut4d<YTy>
 where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
-      <CudnnHandle as CudnnConvExt<WTy, XTy, YTy>>::HostScalar: Zero + One,
 {
   fn batch_conv2d(&mut self,
     cfg: &XGPUConvFwdConfig,
@@ -1357,7 +1366,11 @@ where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
       //_ => unimplemented!(),
     }
   }
+}
 
+impl<WTy: Copy, XTy: Copy, YTy: Copy> GPUBatchConv3dOps<WTy, XTy, YTy> for GPUDeviceArrayViewMut5d<YTy>
+where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
+{
   fn batch_conv3d(&mut self,
     cfg: &XGPUConvFwdConfig,
     state: &mut XGPUConvState<WTy, XTy, YTy>,
@@ -1396,7 +1409,6 @@ where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
 
 impl<WTy: Copy, XTy: Copy, YTy: Copy> GPUBatchConvReduceOps<WTy, XTy, YTy> for GPUDeviceArrayViewMut1d<WTy>
 where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
-      <CudnnHandle as CudnnConvExt<WTy, XTy, YTy>>::HostScalar: Zero + One,
 {
   fn batch_conv2d_reduce_bwd(&mut self,
     //cfg: &XGPUConvFwdConfig,
@@ -1427,7 +1439,11 @@ where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
       //_ => unimplemented!(),
     }
   }
+}
 
+impl<WTy: Copy, XTy: Copy, YTy: Copy> GPUBatchConv3dReduceOps<WTy, XTy, YTy> for GPUDeviceArrayViewMut1d<WTy>
+where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
+{
   fn batch_conv3d_reduce_bwd(&mut self,
     state: &mut XGPUConvState<WTy, XTy, YTy>,
     alpha: <CudnnHandle as CudnnConvExt<WTy, XTy, YTy>>::HostScalar,
@@ -1460,7 +1476,6 @@ where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
 
 impl<WTy: Copy, XTy: Copy, YTy: Copy> GPUBatchLTransConvOps<WTy, XTy, YTy> for GPUDeviceArrayViewMut4d<XTy>
 where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
-      <CudnnHandle as CudnnConvExt<WTy, XTy, YTy>>::HostScalar: Zero + One,
 {
   fn batch_left_transpose_conv2d(&mut self,
       cfg: &XGPUConvBwdXConfig,
@@ -1531,7 +1546,11 @@ where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
       //_ => unimplemented!(),
     }
   }
+}
 
+impl<WTy: Copy, XTy: Copy, YTy: Copy> GPUBatchLTransConv3dOps<WTy, XTy, YTy> for GPUDeviceArrayViewMut5d<XTy>
+where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
+{
   fn batch_left_transpose_conv3d(&mut self,
       cfg: &XGPUConvBwdXConfig,
       state: &mut XGPUConvState<WTy, XTy, YTy>,
@@ -1570,7 +1589,6 @@ where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
 
 impl<WTy: Copy, XTy: Copy, YTy: Copy> GPUBatchOuterConvOps<WTy, XTy, YTy> for GPUDeviceArrayViewMut4d<WTy>
 where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
-      <CudnnHandle as CudnnConvExt<WTy, XTy, YTy>>::HostScalar: Zero + One,
 {
   fn batch_outer_conv2d(&mut self,
       cfg: &XGPUConvBwdWConfig,
@@ -1606,7 +1624,11 @@ where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
       //_ => unimplemented!(),
     }
   }
+}
 
+impl<WTy: Copy, XTy: Copy, YTy: Copy> GPUBatchOuterConv3dOps<WTy, XTy, YTy> for GPUDeviceArrayViewMut5d<WTy>
+where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
+{
   fn batch_outer_conv3d(&mut self,
       cfg: &XGPUConvBwdWConfig,
       state: &mut XGPUConvState<WTy, XTy, YTy>,
