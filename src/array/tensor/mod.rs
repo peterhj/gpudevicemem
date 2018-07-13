@@ -130,6 +130,71 @@ impl GPUTensorMutOps<f32> for GPUDeviceArrayViewMut4d<f32> {
   }
 }
 
+impl GPUTensorMutOps<f32> for GPUDeviceArrayViewMut5d<f32> {
+  fn broadcast_add_1d_inplace(&mut self, x: GPUDeviceArrayView1d<f32>, axis: isize, conn: GPUDeviceConn) {
+    if self.is_packed() && x.is_packed() {
+      let mut stream = conn.cuda_stream();
+      match axis {
+        0 => {
+          unsafe { gpudevicemem_bcast_flat_add_I1a_IO2ab_inplace_packed_f32(
+              sz2uint(self.size()[0]),
+              sz2uint(self.size()[1] * self.size()[2] * self.size()[3] * self.size()[4]),
+              x.as_dptr(),
+              self.as_mut_dptr(),
+              conn.cuda_kernel_cfg() as *const _,
+              stream.as_mut_ptr(),
+          ) };
+        }
+        1 => {
+          unsafe { gpudevicemem_bcast_flat_add_I1b_IO2abc_inplace_packed_f32(
+              sz2uint(self.size()[0]),
+              sz2uint(self.size()[1]),
+              sz2uint(self.size()[2] * self.size()[3] * self.size()[4]),
+              x.as_dptr(),
+              self.as_mut_dptr(),
+              conn.cuda_kernel_cfg() as *const _,
+              stream.as_mut_ptr(),
+          ) };
+        }
+        2 => {
+          unsafe { gpudevicemem_bcast_flat_add_I1b_IO2abc_inplace_packed_f32(
+              sz2uint(self.size()[0] * self.size()[1]),
+              sz2uint(self.size()[2]),
+              sz2uint(self.size()[3] * self.size()[4]),
+              x.as_dptr(),
+              self.as_mut_dptr(),
+              conn.cuda_kernel_cfg() as *const _,
+              stream.as_mut_ptr(),
+          ) };
+        }
+        3 => {
+          unsafe { gpudevicemem_bcast_flat_add_I1b_IO2abc_inplace_packed_f32(
+              sz2uint(self.size()[0] * self.size()[1] * self.size()[2]),
+              sz2uint(self.size()[3]),
+              sz2uint(self.size()[4]),
+              x.as_dptr(),
+              self.as_mut_dptr(),
+              conn.cuda_kernel_cfg() as *const _,
+              stream.as_mut_ptr(),
+          ) };
+        }
+        4 | -1 => {
+          // TODO
+          unimplemented!();
+        }
+        _ => unreachable!(),
+      }
+    } else {
+      unimplemented!();
+    }
+  }
+
+  fn broadcast_mult_add_1d_inplace(&mut self, a: GPUDeviceArrayView1d<f32>, b: GPUDeviceArrayView1d<f32>, axis: isize, conn: GPUDeviceConn) {
+    // TODO
+    unimplemented!();
+  }
+}
+
 impl GPUTensorOps<f32> for GPUDeviceArrayView4d<f32> {
   fn reduce_sum_1d_to(&self, y: &mut GPUDeviceArrayViewMut1d<f32>, axis: isize, conn: GPUDeviceConn) {
     // TODO
