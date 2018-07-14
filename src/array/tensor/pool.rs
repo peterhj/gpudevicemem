@@ -129,6 +129,24 @@ fn sz2int(sz: usize) -> i32 {
   sz as i32
 }
 
+fn encode_index3(size: [usize; 3]) -> [i32; 3] {
+  [
+    sz2int(size[2]),
+    sz2int(size[1]),
+    sz2int(size[0]),
+  ]
+}
+
+fn encode_index5(size: [usize; 5]) -> [i32; 5] {
+  [
+    sz2int(size[4]),
+    sz2int(size[3]),
+    sz2int(size[2]),
+    sz2int(size[1]),
+    sz2int(size[0]),
+  ]
+}
+
 pub fn query_gpu_pool_state<T>(
     dev: GPUDeviceId,
     pool_op: XPoolOp,
@@ -187,6 +205,42 @@ where T: GPUDataTyped + CudnnDataTypeExt,
           cudnnNanPropagation_t_CUDNN_NOT_PROPAGATE_NAN,
       ).is_ok());
     }
+    XPoolFullShape::Pool3d(shape) => {
+      // TODO: configure tensor layout.
+      if shape.is_default_ncdhw() {
+        let src_stride = shape.src_size.to_packed_stride();
+        assert!(src_desc.set_nd(
+            &encode_index5(shape.src_size),
+            &encode_index5(src_stride),
+        ).is_ok());
+        assert!(src2_desc.set_nd(
+            &encode_index5(shape.src_size),
+            &encode_index5(src_stride),
+        ).is_ok());
+        let dst_stride = shape.dst_size.to_packed_stride();
+        assert!(dst_desc.set_nd(
+            &encode_index5(shape.dst_size),
+            &encode_index5(dst_stride),
+        ).is_ok());
+        assert!(dst2_desc.set_nd(
+            &encode_index5(shape.dst_size),
+            &encode_index5(dst_stride),
+        ).is_ok());
+      } else {
+        unimplemented!("only nchw layout is currently supported");
+      }
+      assert!(pool_desc.set_nd(
+          &encode_index3(shape.ker_size),
+          &encode_index3(shape.zero_pad),
+          &encode_index3(shape.stride),
+          match pool_op {
+            XPoolOp::Average    => cudnnPoolingMode_t_CUDNN_POOLING_AVERAGE_COUNT_INCLUDE_PADDING,
+            XPoolOp::Max        => cudnnPoolingMode_t_CUDNN_POOLING_MAX_DETERMINISTIC,
+          },
+          // TODO: configure cudnn NaN propagation.
+          cudnnNanPropagation_t_CUDNN_NOT_PROPAGATE_NAN,
+      ).is_ok());
+    }
     _ => unimplemented!(),
   }
 
@@ -195,7 +249,10 @@ where T: GPUDataTyped + CudnnDataTypeExt,
   }));
 }
 
-pub trait GPUBatchPoolOps<T: Copy> where CudnnHandle: CudnnPoolExt<T> {
+pub trait GPUBatchPoolOps<T: Copy>
+where CudnnHandle: CudnnPoolExt<T>,
+      <CudnnHandle as CudnnPoolExt<T>>::HostScalar: Zero + One,
+{
   fn batch_pool2d(&mut self,
       state: &mut XGPUPoolState<T>,
       x: GPUDeviceArrayView4d<T>,
