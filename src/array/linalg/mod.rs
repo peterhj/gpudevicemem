@@ -58,7 +58,7 @@ impl GPUVectorOps<f32> for GPUDeviceArrayView1d<f32> {
     let mut result: f32 = 0.0;
     let status = unsafe { cublas_h.nrm2(
         sz2int(self.size()),
-        self.as_dptr(), sz2int(self.stride()),
+        self.raw_dptr(), sz2int(self.stride()),
         &mut result as *mut _,
     ) };
     assert!(status.is_ok());
@@ -76,8 +76,8 @@ impl GPUVectorMutOps<f32> for GPUDeviceArrayViewMut1d<f32> {
           unsafe { gpudevicemem_sum_I1ab_Ob_packed_deterministic_f32(
               sz2uint(x.size()[0]),
               sz2uint(x.size()[1]),
-              x.as_dptr(),
-              self.as_mut_dptr(),
+              x.raw_dptr(),
+              self.raw_mut_dptr(),
               conn.cuda_kernel_cfg() as *const _,
               stream.as_mut_ptr(),
           ) };
@@ -87,8 +87,8 @@ impl GPUVectorMutOps<f32> for GPUDeviceArrayViewMut1d<f32> {
           unsafe { gpudevicemem_sum_I1ab_Oa_packed_deterministic_f32(
               sz2uint(x.size()[0]),
               sz2uint(x.size()[1]),
-              x.as_dptr(),
-              self.as_mut_dptr(),
+              x.raw_dptr(),
+              self.raw_mut_dptr(),
               conn.cuda_kernel_cfg() as *const _,
               stream.as_mut_ptr(),
           ) };
@@ -123,10 +123,10 @@ impl GPUVectorMutOps<f32> for GPUDeviceArrayViewMut1d<f32> {
         sz2int(w.size()[0]),
         sz2int(w.size()[1]),
         &alpha,
-        w.as_dptr(), sz2int(w.stride()[1]),
-        x.as_dptr(), sz2int(x.stride()),
+        w.raw_dptr(), sz2int(w.stride()[1]),
+        x.raw_dptr(), sz2int(x.stride()),
         &beta,
-        self.as_mut_dptr(), sz2int(self.stride()),
+        self.raw_mut_dptr(), sz2int(self.stride()),
     ) };
     assert!(status.is_ok());
   }
@@ -170,8 +170,8 @@ impl GPUMatrixOps<f32> for GPUDeviceArrayViewMut2d<f32> {
           unsafe { gpudevicemem_bcast_flat_add_I1a_IO2ab_inplace_packed_f32(
               sz2uint(self.size()[0]),
               sz2uint(self.size()[1]),
-              x.as_dptr(),
-              self.as_mut_dptr(),
+              x.raw_dptr(),
+              self.raw_mut_dptr(),
               conn.cuda_kernel_cfg() as *const _,
               stream.as_mut_ptr(),
           ) };
@@ -215,10 +215,10 @@ impl GPUMatrixOps<f32> for GPUDeviceArrayViewMut2d<f32> {
         sz2int(x.size()[1]),
         sz2int(w.size()[1]),
         &alpha,
-        w.as_dptr(), sz2int(w.stride()[1]),
-        x.as_dptr(), sz2int(x.stride()[1]),
+        w.raw_dptr(), sz2int(w.stride()[1]),
+        x.raw_dptr(), sz2int(x.stride()[1]),
         &beta,
-        self.as_mut_dptr(), sz2int(self.stride()[1]),
+        self.raw_mut_dptr(), sz2int(self.stride()[1]),
     ) };
     assert!(status.is_ok());
   }
@@ -251,10 +251,10 @@ impl GPUMatrixOps<f32> for GPUDeviceArrayViewMut2d<f32> {
         sz2int(y.size()[1]),
         sz2int(w.size()[0]),
         &alpha,
-        w.as_dptr(), sz2int(w.stride()[1]),
-        y.as_dptr(), sz2int(y.stride()[1]),
+        w.raw_dptr(), sz2int(w.stride()[1]),
+        y.raw_dptr(), sz2int(y.stride()[1]),
         &beta,
-        self.as_mut_dptr(), sz2int(self.stride()[1]),
+        self.raw_mut_dptr(), sz2int(self.stride()[1]),
     ) };
     assert!(status.is_ok());
   }
@@ -287,10 +287,10 @@ impl GPUMatrixOps<f32> for GPUDeviceArrayViewMut2d<f32> {
         sz2int(x.size()[0]),
         sz2int(y.size()[1]),
         &alpha,
-        y.as_dptr(), sz2int(y.stride()[1]),
-        x.as_dptr(), sz2int(x.stride()[1]),
+        y.raw_dptr(), sz2int(y.stride()[1]),
+        x.raw_dptr(), sz2int(x.stride()[1]),
         &beta,
-        self.as_mut_dptr(), sz2int(self.stride()[1]),
+        self.raw_mut_dptr(), sz2int(self.stride()[1]),
     ) };
     assert!(status.is_ok());
   }

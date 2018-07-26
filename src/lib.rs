@@ -563,6 +563,20 @@ impl<'a> GPUAsyncSectionGuard<'a> {
   }
 }
 
+pub struct GPUDeviceAsyncMemGuard<'a, T: Copy + 'static> {
+  mem:  &'a GPUDeviceAsyncMem<T>,
+}
+
+impl<'a, T: Copy> GPUDeviceAsyncMemGuard<'a, T> {
+  pub unsafe fn as_dptr(&self) -> *const T {
+    self.mem.raw_dptr()
+  }
+
+  pub unsafe fn as_mut_dptr(&self) -> *mut T {
+    self.mem.raw_mut_dptr()
+  }
+}
+
 pub trait GPUDevicePlace {
   fn device(&self) -> GPUDeviceId;
 }
@@ -571,16 +585,22 @@ pub trait GPUDeviceAsync {
   fn async_state(&self) -> Arc<Mutex<GPUAsyncState>>;
 }
 
-pub trait GPUDeviceMem<T>: GPUDevicePlace + GPUDeviceAsync where T: Copy {
-  //fn device(&self) -> GPUDeviceId;
-  unsafe fn as_dptr(&self) -> *const T;
-  unsafe fn as_mut_dptr(&self) -> *mut T;
+pub trait GPUDeviceMem<T>: GPUDevicePlace where T: Copy {
+  unsafe fn raw_dptr(&self) -> *const T;
+  unsafe fn raw_mut_dptr(&self) -> *mut T;
+}
+
+pub trait GPUDeviceExtent<T>: GPUDeviceMem<T> where T: Copy {
   fn len(&self) -> usize;
   fn size_bytes(&self) -> usize;
 }
 
+pub trait GPUDeviceAsyncMem<T>: GPUDeviceAsync + GPUDeviceMem<T> where T: Copy + 'static {
+  fn wait(&self) -> GPUDeviceAsyncMemGuard<T>;
+}
+
 pub trait GPUDeviceAlloc<T> where T: Copy + 'static {
-  type Mem: GPUDeviceMem<T> + 'static;
+  type Mem: GPUDeviceAsyncMem<T> + 'static;
 
   unsafe fn alloc(&self, len: usize, conn: GPUDeviceConn) -> Self::Mem;
 }
@@ -588,7 +608,7 @@ pub trait GPUDeviceAlloc<T> where T: Copy + 'static {
 pub struct GPUDeviceTypedMem<T> where T: Copy {
   dptr: *mut T,
   len:  usize,
-  _mem: Arc<GPUDeviceMem<u8>>,
+  _mem: Arc<GPUDeviceAsyncMem<u8>>,
   _mrk: PhantomData<T>,
 }
 
@@ -608,14 +628,16 @@ impl<T> GPUDevicePlace for GPUDeviceTypedMem<T> where T: Copy {
 }
 
 impl<T> GPUDeviceMem<T> for GPUDeviceTypedMem<T> where T: Copy {
-  unsafe fn as_dptr(&self) -> *const T {
+  unsafe fn raw_dptr(&self) -> *const T {
     self.dptr
   }
 
-  unsafe fn as_mut_dptr(&self) -> *mut T {
+  unsafe fn raw_mut_dptr(&self) -> *mut T {
     self.dptr
   }
+}
 
+impl<T> GPUDeviceExtent<T> for GPUDeviceTypedMem<T> where T: Copy {
   fn len(&self) -> usize {
     self.len
   }
@@ -625,11 +647,18 @@ impl<T> GPUDeviceMem<T> for GPUDeviceTypedMem<T> where T: Copy {
   }
 }
 
+impl<T> GPUDeviceAsyncMem<T> for GPUDeviceTypedMem<T> where T: Copy + 'static {
+  fn wait(&self) -> GPUDeviceAsyncMemGuard<T> {
+    // FIXME
+    unimplemented!();
+  }
+}
+
 pub struct GPUDeviceSliceMem<T> where T: Copy {
   dptr: *mut T,
   len:  usize,
   phsz: usize,
-  _mem: Arc<GPUDeviceMem<T>>,
+  _mem: Arc<GPUDeviceAsyncMem<T>>,
 }
 
 unsafe impl<T> Send for GPUDeviceSliceMem<T> where T: Copy {}
@@ -648,20 +677,29 @@ impl<T> GPUDevicePlace for GPUDeviceSliceMem<T> where T: Copy {
 }
 
 impl<T> GPUDeviceMem<T> for GPUDeviceSliceMem<T> where T: Copy {
-  unsafe fn as_dptr(&self) -> *const T {
+  unsafe fn raw_dptr(&self) -> *const T {
     self.dptr
   }
 
-  unsafe fn as_mut_dptr(&self) -> *mut T {
+  unsafe fn raw_mut_dptr(&self) -> *mut T {
     self.dptr
   }
+}
 
+impl<T> GPUDeviceExtent<T> for GPUDeviceSliceMem<T> where T: Copy {
   fn len(&self) -> usize {
     self.phsz
   }
 
   fn size_bytes(&self) -> usize {
     self.phsz
+  }
+}
+
+impl<T> GPUDeviceAsyncMem<T> for GPUDeviceSliceMem<T> where T: Copy + 'static {
+  fn wait(&self) -> GPUDeviceAsyncMemGuard<T> {
+    // FIXME
+    unimplemented!();
   }
 }
 
@@ -787,11 +825,12 @@ impl GPUDeviceBurstArenaInner {
     let reserve_phsz = self.b_used + bare_phsz;
     self.reserve_bytes(reserve_phsz);
     let rdup_phsz = round_up(bare_phsz, BURST_MEM_ALIGN);
+    assert!(bare_phsz <= rdup_phsz);
     if self._check_all_regions_free() {
       self._merge_all_regions(rdup_phsz);
     }
     self.b_used += bare_phsz;
-    let mem: Arc<GPUDeviceMem<u8>> = if self.used0 + rdup_phsz <= self.regions[0].phsz {
+    let mem: Arc<GPUDeviceAsyncMem<u8>> = if self.used0 + rdup_phsz <= self.regions[0].phsz {
       let dptr = self.regions[0].dptr.offset(self.used0 as _);
       assert!(check_alignment(dptr as usize, BURST_MEM_ALIGN));
       let slice = Arc::new(GPUDeviceSliceMem{
@@ -821,9 +860,8 @@ impl GPUDeviceBurstArenaInner {
       reg
     };
     assert!(self.regions[0].phsz + self.used_ext <= self.max_phsz);
-    assert!(mem.size_bytes() >= bare_phsz);
     GPUDeviceTypedMem{
-      dptr: mem.as_mut_dptr() as *mut _,
+      dptr: mem.raw_mut_dptr() as *mut _,
       len:  len,
       _mem: mem,
       _mrk: PhantomData,
@@ -907,19 +945,28 @@ impl<T> GPUDevicePlace for GPUDeviceRawMem<T> where T: Copy {
 }
 
 impl<T> GPUDeviceMem<T> for GPUDeviceRawMem<T> where T: Copy {
-  unsafe fn as_dptr(&self) -> *const T {
+  unsafe fn raw_dptr(&self) -> *const T {
     self.dptr
   }
 
-  unsafe fn as_mut_dptr(&self) -> *mut T {
+  unsafe fn raw_mut_dptr(&self) -> *mut T {
     self.dptr
   }
+}
 
+impl<T> GPUDeviceExtent<T> for GPUDeviceRawMem<T> where T: Copy {
   fn len(&self) -> usize {
     self.len
   }
 
   fn size_bytes(&self) -> usize {
     self.phsz
+  }
+}
+
+impl<T> GPUDeviceAsyncMem<T> for GPUDeviceRawMem<T> where T: Copy + 'static {
+  fn wait(&self) -> GPUDeviceAsyncMemGuard<T> {
+    // FIXME
+    unimplemented!();
   }
 }

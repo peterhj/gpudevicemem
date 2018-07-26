@@ -1307,16 +1307,16 @@ where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
         let status = unsafe { cudnn_h.conv_fwd(
             alpha,
             &mut state.src_desc,
-            x.as_dptr(),
+            x.raw_dptr(),
             &mut state.kernel_desc,
-            w.as_dptr(),
+            w.raw_dptr(),
             &mut state.conv_desc,
             cfg.algo_desc,
-            workspace.as_mut_dptr(),
+            workspace.raw_mut_dptr(),
             workspace.size(),
             beta,
             &mut state.dst_desc,
-            self.as_mut_dptr(),
+            self.raw_mut_dptr(),
         ) };
         assert!(status.is_ok());
       }
@@ -1345,21 +1345,21 @@ where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
         /*let status = unsafe { cudnn_h.conv_fwd_bias_act(
             alpha,
             &mut state.src_desc,
-            x.as_dptr(),
+            x.raw_dptr(),
             &mut state.kernel_desc,
-            w.as_dptr(),
+            w.raw_dptr(),
             &mut state.conv_desc,
             cfg.algo_desc,
-            workspace.as_mut_dptr(),
+            workspace.raw_mut_dptr(),
             workspace.size(),
             beta,
             &mut state.dst2_desc,
-            self.as_dptr(),
+            self.raw_dptr(),
             &mut state.bias_desc,
-            b.as_dptr(),
+            b.raw_dptr(),
             &mut state.identity_desc,
             &mut state.dst_desc,
-            self.as_mut_dptr(),
+            self.raw_mut_dptr(),
         ) };
         assert!(status.is_ok());*/
       }
@@ -1389,16 +1389,16 @@ where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
         let status = unsafe { cudnn_h.conv_fwd(
             alpha,
             &mut state.src_desc,
-            x.as_dptr(),
+            x.raw_dptr(),
             &mut state.kernel_desc,
-            w.as_dptr(),
+            w.raw_dptr(),
             &mut state.conv_desc,
             cfg.algo_desc,
-            workspace.as_mut_dptr(),
+            workspace.raw_mut_dptr(),
             workspace.size(),
             beta,
             &mut state.dst_desc,
-            self.as_mut_dptr(),
+            self.raw_mut_dptr(),
         ) };
         assert!(status.is_ok());
       }
@@ -1426,10 +1426,10 @@ where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
         let status = unsafe { cudnn_h.conv_bwd_bias(
             alpha,
             &mut state.dst_desc,
-            y.as_dptr(),
+            y.raw_dptr(),
             beta,
             &mut state.bias_desc,
-            self.as_mut_dptr(),
+            self.raw_mut_dptr(),
         ) };
         match status {
           Ok(_) => {}
@@ -1459,10 +1459,10 @@ where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
         let status = unsafe { cudnn_h.conv_bwd_bias(
             alpha,
             &mut state.dst_desc,
-            y.as_dptr(),
+            y.raw_dptr(),
             beta,
             &mut state.bias_desc,
-            self.as_mut_dptr(),
+            self.raw_mut_dptr(),
         ) };
         match status {
           Ok(_) => {}
@@ -1495,16 +1495,16 @@ where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
         let status = unsafe { cudnn_h.conv_bwd_data(
             alpha,
             &mut state.kernel_desc,
-            w.as_dptr(),
+            w.raw_dptr(),
             &mut state.dst_desc,
-            y.as_dptr(),
+            y.raw_dptr(),
             &mut state.conv_desc,
             cfg.algo_desc,
-            workspace.as_mut_dptr(),
+            workspace.raw_mut_dptr(),
             workspace.size(),
             beta,
             &mut state.src_desc,
-            self.as_mut_dptr(),
+            self.raw_mut_dptr(),
         ) };
         assert!(status.is_ok());
       }
@@ -1530,16 +1530,16 @@ where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
         let status = unsafe { cudnn_h.conv_bwd_data(
             alpha,
             &mut state.kernel_desc,
-            w.as_dptr(),
+            w.raw_dptr(),
             &mut state.dst_desc,
-            y.as_dptr(),
+            y.raw_dptr(),
             &mut state.conv_desc,
             cfg.algo_desc,
-            workspace.as_mut_dptr(),
+            workspace.raw_mut_dptr(),
             workspace.size(),
             beta,
             &mut state.src_desc,
-            self.as_mut_dptr(),
+            self.raw_mut_dptr(),
         ) };
         assert!(status.is_ok());
       }
@@ -1569,16 +1569,16 @@ where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
         let status = unsafe { cudnn_h.conv_bwd_data(
             alpha,
             &mut state.kernel_desc,
-            w.as_dptr(),
+            w.raw_dptr(),
             &mut state.dst_desc,
-            y.as_dptr(),
+            y.raw_dptr(),
             &mut state.conv_desc,
             cfg.algo_desc,
-            workspace.as_mut_dptr(),
+            workspace.raw_mut_dptr(),
             workspace.size(),
             beta,
             &mut state.src_desc,
-            self.as_mut_dptr(),
+            self.raw_mut_dptr(),
         ) };
         assert!(status.is_ok());
       }
@@ -1608,16 +1608,16 @@ where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
         let status = unsafe { cudnn_h.conv_bwd_filter(
             alpha,
             &mut state.src_desc,
-            x.as_dptr(),
+            x.raw_dptr(),
             &mut state.dst_desc,
-            y.as_dptr(),
+            y.raw_dptr(),
             &mut state.conv_desc,
             cfg.algo_desc,
-            workspace.as_mut_dptr(),
+            workspace.raw_mut_dptr(),
             workspace.size(),
             beta,
             &mut state.kernel_desc,
-            self.as_mut_dptr(),
+            self.raw_mut_dptr(),
         ) };
         assert!(status.is_ok());
       }
@@ -1647,16 +1647,16 @@ where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
         let status = unsafe { cudnn_h.conv_bwd_filter(
             alpha,
             &mut state.src_desc,
-            x.as_dptr(),
+            x.raw_dptr(),
             &mut state.dst_desc,
-            y.as_dptr(),
+            y.raw_dptr(),
             &mut state.conv_desc,
             cfg.algo_desc,
-            workspace.as_mut_dptr(),
+            workspace.raw_mut_dptr(),
             workspace.size(),
             beta,
             &mut state.kernel_desc,
-            self.as_mut_dptr(),
+            self.raw_mut_dptr(),
         ) };
         assert!(status.is_ok());
       }

@@ -305,10 +305,10 @@ where CudnnHandle: CudnnPoolExt<T>,
             &mut state.pool_desc,
             alpha,
             &mut state.src_desc,
-            x.as_dptr(),
+            x.raw_dptr(),
             beta,
             &mut state.dst_desc,
-            self.as_mut_dptr(),
+            self.raw_mut_dptr(),
         ) };
         assert!(status.is_ok());
       }
@@ -334,14 +334,14 @@ where CudnnHandle: CudnnPoolExt<T>,
             &mut state.pool_desc,
             alpha,
             &mut state.dst_desc,
-            y.as_dptr(),
+            y.raw_dptr(),
             &mut state.dst2_desc,
-            dy.as_dptr(),
+            dy.raw_dptr(),
             &mut state.src_desc,
-            x.as_dptr(),
+            x.raw_dptr(),
             beta,
             &mut state.src2_desc,
-            self.as_mut_dptr(),
+            self.raw_mut_dptr(),
         ) };
         assert!(status.is_ok());
       }
@@ -370,10 +370,10 @@ where CudnnHandle: CudnnPoolExt<T>,
             &mut state.pool_desc,
             alpha,
             &mut state.src_desc,
-            x.as_dptr(),
+            x.raw_dptr(),
             beta,
             &mut state.dst_desc,
-            self.as_mut_dptr(),
+            self.raw_mut_dptr(),
         ) };
         assert!(status.is_ok());
       }
@@ -399,14 +399,14 @@ where CudnnHandle: CudnnPoolExt<T>,
             &mut state.pool_desc,
             alpha,
             &mut state.dst_desc,
-            y.as_dptr(),
+            y.raw_dptr(),
             &mut state.dst2_desc,
-            dy.as_dptr(),
+            dy.raw_dptr(),
             &mut state.src_desc,
-            x.as_dptr(),
+            x.raw_dptr(),
             beta,
             &mut state.src2_desc,
-            self.as_mut_dptr(),
+            self.raw_mut_dptr(),
         ) };
         assert!(status.is_ok());
       }
