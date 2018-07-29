@@ -412,9 +412,66 @@ impl GPUAsyncState {
   }
 }
 
-/*thread_local! {
-  static SECTION_STACK: RefCell<Vec<Rc<RefCell<GPUAsyncSectionState>>>> = RefCell::new(Vec::new());
-}*/
+fn push_thread_gpu_async_frame(evcopy: Arc<Mutex<CudaEvent>>) -> usize {
+  let ctr = ASYNC_CTR.with(|ctr| {
+    let next_ctr = ctr.get() + 1;
+    ctr.set(next_ctr);
+    next_ctr
+  });
+  let frame = GPUAsyncFrame{
+    ctr:    ctr,
+    evcopy: evcopy,
+    state:  GPUAsyncSectionState::default(),
+  };
+  ASYNC_STACK.with(move |stack| {
+    let mut stack = stack.borrow_mut();
+    stack.push(Rc::new(RefCell::new(frame)));
+  });
+  ctr
+}
+
+fn pop_thread_gpu_async_frame() -> Rc<RefCell<GPUAsyncFrame>> {
+  ASYNC_STACK.with(|stack| {
+    let mut stack = stack.borrow_mut();
+    match stack.pop() {
+      None => panic!(),
+      Some(frame) => frame,
+    }
+  })
+}
+
+fn thread_gpu_async_frame() -> Rc<RefCell<GPUAsyncFrame>> {
+  ASYNC_STACK.with(|stack| {
+    let mut stack = stack.borrow_mut();
+    match stack.last() {
+      None => panic!(),
+      Some(frame) => frame.clone()
+    }
+  })
+}
+
+thread_local! {
+  static ASYNC_CTR:     Cell<usize> = Cell::new(0);
+  static ASYNC_STACK:   RefCell<Vec<Rc<RefCell<GPUAsyncFrame>>>> = RefCell::new(Vec::new());
+}
+
+struct GPUAsyncFrame {
+  ctr:      usize,
+  evcopy:   Arc<Mutex<CudaEvent>>,
+  state:    GPUAsyncSectionState,
+}
+
+impl GPUAsyncFrame {
+  fn _wait(&mut self, data: Arc<Mutex<GPUAsyncState>>, conn: GPUDeviceConn) {
+    // If the data has a ticket, wait on it.
+    if let Some(ticket) = data.lock().take_ticket() {
+      self.state.wait_ticket(ticket, conn);
+    }
+
+    // Register the data for a future post.
+    self.state.register(data);
+  }
+}
 
 struct ArcKey<T: ?Sized>(pub Arc<T>);
 
@@ -458,7 +515,7 @@ impl Clone for GPULazyAsyncSection {
 }
 
 impl GPULazyAsyncSection {
-  pub fn enter<'a>(&'a mut self, conn: GPUDeviceConn<'a>) -> GPUAsyncSectionGuard<'a> {
+  pub fn enter<'section>(&'section mut self, conn: GPUDeviceConn<'section>) -> GPUAsyncSectionGuard<'section> {
     if self.shared.borrow().is_none() {
       *self.shared.borrow_mut() = Some(GPUAsyncSection::new(conn.clone()));
     }
@@ -466,6 +523,16 @@ impl GPULazyAsyncSection {
       self.cached = self.shared.borrow().clone();
     }
     self.cached.as_ref().unwrap().enter(conn)
+  }
+
+  pub fn push<'section>(&'section mut self, conn: GPUDeviceConn<'section>) -> GPUAsyncSectionPop<'section> {
+    if self.shared.borrow().is_none() {
+      *self.shared.borrow_mut() = Some(GPUAsyncSection::new(conn.clone()));
+    }
+    if self.cached.is_none() {
+      self.cached = self.shared.borrow().clone();
+    }
+    self.cached.as_ref().unwrap().push(conn)
   }
 }
 
@@ -485,8 +552,7 @@ impl GPUAsyncSection {
     }
   }
 
-  pub fn enter<'a>(&'a self, conn: GPUDeviceConn<'a>) -> GPUAsyncSectionGuard<'a> {
-    //println!("DEBUG: GPUAsyncSection::enter()");
+  pub fn enter<'section>(&'section self, conn: GPUDeviceConn<'section>) -> GPUAsyncSectionGuard<'section> {
     assert_eq!(self.dev, conn.device());
     let evcopy = self.event.clone();
     GPUAsyncSectionGuard{
@@ -494,6 +560,16 @@ impl GPUAsyncSection {
       conn:     conn,
       evcopy:   evcopy,
       state:    GPUAsyncSectionState::default(),
+    }
+  }
+
+  pub fn push<'section>(&'section self, conn: GPUDeviceConn<'section>) -> GPUAsyncSectionPop<'section> {
+    assert_eq!(self.dev, conn.device());
+    let ctr = push_thread_gpu_async_frame(self.event.clone());
+    GPUAsyncSectionPop{
+      ctr:      ctr,
+      event:    self.event.lock(),
+      conn:     conn,
     }
   }
 }
@@ -519,9 +595,46 @@ impl GPUAsyncSectionState {
   }
 }
 
-pub struct GPUAsyncSectionGuard<'a> {
-  event:    MutexGuard<'a, CudaEvent>,
-  conn:     GPUDeviceConn<'a>,
+pub struct GPUAsyncSectionPop<'section> {
+  ctr:      usize,
+  event:    MutexGuard<'section, CudaEvent>,
+  conn:     GPUDeviceConn<'section>,
+}
+
+impl<'section> Drop for GPUAsyncSectionPop<'section> {
+  fn drop(&mut self) {
+    // Create a ticket from an event recording.
+    let (e_uid, s_uid) = {
+      let mut stream = self.conn.cuda_stream();
+      assert!(self.event.record(&mut *stream).is_ok());
+      (self.event.unique_id(), stream.unique_id())
+    };
+    let entry = pop_thread_gpu_async_frame();
+    assert_eq!(self.ctr, entry.borrow().ctr);
+    let ticket = GPUAsyncTicket{
+      event:    entry.borrow().evcopy.clone(),
+      e_uid:    e_uid,
+      s_uid:    s_uid,
+    };
+
+    // Post ticket to each registered data.
+    let mut entry = entry.borrow_mut();
+    for data in entry.state.reg_data.drain() {
+      let prev_tick = data.0.lock().swap_ticket(ticket.clone());
+      assert!(prev_tick.is_none());
+    }
+  }
+}
+
+impl<'a> GPUAsyncSectionPop<'a> {
+  pub fn _wait(&mut self, _data: Arc<Mutex<GPUAsyncState>>, /*conn: GPUDeviceConn*/) {
+    // Do nothing; this is for compatibility only.
+  }
+}
+
+pub struct GPUAsyncSectionGuard<'section> {
+  event:    MutexGuard<'section, CudaEvent>,
+  conn:     GPUDeviceConn<'section>,
   evcopy:   Arc<Mutex<CudaEvent>>,
   state:    GPUAsyncSectionState,
 }
@@ -563,17 +676,38 @@ impl<'a> GPUAsyncSectionGuard<'a> {
   }
 }
 
-pub struct GPUDeviceAsyncMemGuard<'a, T: Copy + 'static> {
-  mem:  &'a GPUDeviceAsyncMem<T>,
+pub struct GPUDeviceAsyncWaitGuard<'a, T: Copy + 'static, M: GPUDeviceAsyncMem<T> + 'a> {
+  //mem:  &'a GPUDeviceAsyncMem<T>,
+  mem:  &'a M,
+  _mrk: PhantomData<*mut T>,
 }
 
-impl<'a, T: Copy> GPUDeviceAsyncMemGuard<'a, T> {
+impl<'a, T: Copy, M: GPUDeviceAsyncMem<T>> GPUDeviceAsyncWaitGuard<'a, T, M> {
   pub unsafe fn as_dptr(&self) -> *const T {
     self.mem.raw_dptr()
   }
 
-  pub unsafe fn as_mut_dptr(&self) -> *mut T {
+  pub fn inner(&'a self) -> &'a M {
+    self.mem
+  }
+}
+
+pub struct GPUDeviceAsyncWaitMutGuard<'a, T: Copy + 'static, M: GPUDeviceAsyncMem<T> + 'a> {
+  mem:  &'a mut M,
+  _mrk: PhantomData<*mut T>,
+}
+
+impl<'a, T: Copy, M: GPUDeviceAsyncMem<T>> GPUDeviceAsyncWaitMutGuard<'a, T, M> {
+  pub unsafe fn as_dptr(&self) -> *const T {
+    self.mem.raw_dptr()
+  }
+
+  pub unsafe fn as_mut_dptr(&mut self) -> *mut T {
     self.mem.raw_mut_dptr()
+  }
+
+  pub fn inner(&'a self) -> &'a M {
+    self.mem
   }
 }
 
@@ -596,7 +730,8 @@ pub trait GPUDeviceExtent<T>: GPUDeviceMem<T> where T: Copy {
 }
 
 pub trait GPUDeviceAsyncMem<T>: GPUDeviceAsync + GPUDeviceMem<T> where T: Copy + 'static {
-  fn wait(&self) -> GPUDeviceAsyncMemGuard<T>;
+  fn wait(&self, conn: GPUDeviceConn) -> GPUDeviceAsyncWaitGuard<T, Self> where Self: Sized;
+  fn wait_mut(&mut self, conn: GPUDeviceConn) -> GPUDeviceAsyncWaitMutGuard<T, Self> where Self: Sized;
 }
 
 pub trait GPUDeviceAlloc<T> where T: Copy + 'static {
@@ -648,9 +783,16 @@ impl<T> GPUDeviceExtent<T> for GPUDeviceTypedMem<T> where T: Copy {
 }
 
 impl<T> GPUDeviceAsyncMem<T> for GPUDeviceTypedMem<T> where T: Copy + 'static {
-  fn wait(&self) -> GPUDeviceAsyncMemGuard<T> {
-    // FIXME
-    unimplemented!();
+  fn wait(&self, conn: GPUDeviceConn) -> GPUDeviceAsyncWaitGuard<T, Self> {
+    let frame = thread_gpu_async_frame();
+    frame.borrow_mut()._wait(self.async_state(), conn);
+    GPUDeviceAsyncWaitGuard{mem: self, _mrk: PhantomData}
+  }
+
+  fn wait_mut(&mut self, conn: GPUDeviceConn) -> GPUDeviceAsyncWaitMutGuard<T, Self> {
+    let frame = thread_gpu_async_frame();
+    frame.borrow_mut()._wait(self.async_state(), conn);
+    GPUDeviceAsyncWaitMutGuard{mem: self, _mrk: PhantomData}
   }
 }
 
@@ -697,9 +839,16 @@ impl<T> GPUDeviceExtent<T> for GPUDeviceSliceMem<T> where T: Copy {
 }
 
 impl<T> GPUDeviceAsyncMem<T> for GPUDeviceSliceMem<T> where T: Copy + 'static {
-  fn wait(&self) -> GPUDeviceAsyncMemGuard<T> {
-    // FIXME
-    unimplemented!();
+  fn wait(&self, conn: GPUDeviceConn) -> GPUDeviceAsyncWaitGuard<T, Self> {
+    let frame = thread_gpu_async_frame();
+    frame.borrow_mut()._wait(self.async_state(), conn);
+    GPUDeviceAsyncWaitGuard{mem: self, _mrk: PhantomData}
+  }
+
+  fn wait_mut(&mut self, conn: GPUDeviceConn) -> GPUDeviceAsyncWaitMutGuard<T, Self> {
+    let frame = thread_gpu_async_frame();
+    frame.borrow_mut()._wait(self.async_state(), conn);
+    GPUDeviceAsyncWaitMutGuard{mem: self, _mrk: PhantomData}
   }
 }
 
@@ -965,8 +1114,15 @@ impl<T> GPUDeviceExtent<T> for GPUDeviceRawMem<T> where T: Copy {
 }
 
 impl<T> GPUDeviceAsyncMem<T> for GPUDeviceRawMem<T> where T: Copy + 'static {
-  fn wait(&self) -> GPUDeviceAsyncMemGuard<T> {
-    // FIXME
-    unimplemented!();
+  fn wait(&self, conn: GPUDeviceConn) -> GPUDeviceAsyncWaitGuard<T, Self> {
+    let frame = thread_gpu_async_frame();
+    frame.borrow_mut()._wait(self.async_state(), conn);
+    GPUDeviceAsyncWaitGuard{mem: self, _mrk: PhantomData}
+  }
+
+  fn wait_mut(&mut self, conn: GPUDeviceConn) -> GPUDeviceAsyncWaitMutGuard<T, Self> {
+    let frame = thread_gpu_async_frame();
+    frame.borrow_mut()._wait(self.async_state(), conn);
+    GPUDeviceAsyncWaitMutGuard{mem: self, _mrk: PhantomData}
   }
 }

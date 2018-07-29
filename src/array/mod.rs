@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-use ::{GPUDeviceId, GPUDeviceConn, GPUDeviceAlloc, GPUDeviceDefaultAlloc, GPUAsyncState, GPUDeviceAsync, GPUDeviceAsyncMem, GPUDeviceMem, GPUDevicePlace, GPUHostMem};
+use ::*;
 use ffi::routines_gpu::*;
 
 use arrayidx::*;
@@ -23,6 +23,7 @@ use cuda_rand::{CurandGenerator};
 use memarray::*;
 use parking_lot::{Mutex};
 
+use std::marker::{PhantomData};
 use std::mem::{size_of};
 use std::ops::{RangeBounds};
 use std::sync::{Arc};
@@ -584,6 +585,18 @@ impl<Idx, T> GPUDeviceAsync for GPUDeviceArrayView<Idx, T> where Idx: ArrayIndex
   }
 }
 
+impl<Idx, T> GPUDeviceAsyncMem<T> for GPUDeviceArrayView<Idx, T> where Idx: ArrayIndex, T: Copy + 'static {
+  fn wait(&self, conn: GPUDeviceConn) -> GPUDeviceAsyncWaitGuard<T, Self> {
+    let frame = thread_gpu_async_frame();
+    frame.borrow_mut()._wait(self.async_state(), conn);
+    GPUDeviceAsyncWaitGuard{mem: self, _mrk: PhantomData}
+  }
+
+  fn wait_mut(&mut self, conn: GPUDeviceConn) -> GPUDeviceAsyncWaitMutGuard<T, Self> {
+    unreachable!();
+  }
+}
+
 impl<Idx, T> Shape for GPUDeviceArrayView<Idx, T> where Idx: ArrayIndex, T: Copy {
   type Shape = Idx;
 
@@ -689,6 +702,20 @@ impl<Idx, T> GPUDevicePlace for GPUDeviceArrayViewMut<Idx, T> where Idx: ArrayIn
 impl<Idx, T> GPUDeviceAsync for GPUDeviceArrayViewMut<Idx, T> where Idx: ArrayIndex, T: Copy {
   fn async_state(&self) -> Arc<Mutex<GPUAsyncState>> {
     self.mem.async_state()
+  }
+}
+
+impl<Idx, T> GPUDeviceAsyncMem<T> for GPUDeviceArrayViewMut<Idx, T> where Idx: ArrayIndex, T: Copy + 'static {
+  fn wait(&self, conn: GPUDeviceConn) -> GPUDeviceAsyncWaitGuard<T, Self> {
+    let frame = thread_gpu_async_frame();
+    frame.borrow_mut()._wait(self.async_state(), conn);
+    GPUDeviceAsyncWaitGuard{mem: self, _mrk: PhantomData}
+  }
+
+  fn wait_mut(&mut self, conn: GPUDeviceConn) -> GPUDeviceAsyncWaitMutGuard<T, Self> {
+    let frame = thread_gpu_async_frame();
+    frame.borrow_mut()._wait(self.async_state(), conn);
+    GPUDeviceAsyncWaitMutGuard{mem: self, _mrk: PhantomData}
   }
 }
 
