@@ -434,7 +434,7 @@ fn pop_thread_gpu_async_frame() -> Rc<RefCell<GPUAsyncFrame>> {
   ASYNC_STACK.with(|stack| {
     let mut stack = stack.borrow_mut();
     match stack.pop() {
-      None => panic!(),
+      None => panic!("no GPU async frame to pop"),
       Some(frame) => frame,
     }
   })
@@ -444,7 +444,7 @@ fn thread_gpu_async_frame() -> Rc<RefCell<GPUAsyncFrame>> {
   ASYNC_STACK.with(|stack| {
     let mut stack = stack.borrow_mut();
     match stack.last() {
-      None => panic!(),
+      None => panic!("missing GPU async frame"),
       Some(frame) => frame.clone()
     }
   })

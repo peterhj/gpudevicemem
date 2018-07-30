@@ -285,7 +285,7 @@ where CudnnHandle: CudnnPoolExt<T>,
       conn: GPUDeviceConn);
 }
 
-impl<T: Copy> GPUBatchPoolOps<T> for GPUDeviceArrayViewMut4d<T>
+impl<T: Copy + 'static> GPUBatchPoolOps<T> for GPUDeviceArrayViewMut4d<T>
 where CudnnHandle: CudnnPoolExt<T>,
       <CudnnHandle as CudnnPoolExt<T>>::HostScalar: Zero + One,
 {
@@ -296,6 +296,8 @@ where CudnnHandle: CudnnPoolExt<T>,
   {
     match state {
       &mut XGPUPoolState::Cudnn(ref mut state) => {
+        let x = x.wait(conn.clone());
+        let mut y = self.wait_mut(conn.clone());
         let mut stream = conn.cuda_stream();
         let mut cudnn_h = conn.cudnn();
         assert!(cudnn_h.set_stream(&mut stream).is_ok());
@@ -305,10 +307,10 @@ where CudnnHandle: CudnnPoolExt<T>,
             &mut state.pool_desc,
             alpha,
             &mut state.src_desc,
-            x.raw_dptr(),
+            x.as_dptr(),
             beta,
             &mut state.dst_desc,
-            self.raw_mut_dptr(),
+            y.as_mut_dptr(),
         ) };
         assert!(status.is_ok());
       }
@@ -325,6 +327,10 @@ where CudnnHandle: CudnnPoolExt<T>,
   {
     match state {
       &mut XGPUPoolState::Cudnn(ref mut state) => {
+        let y = y.wait(conn.clone());
+        let dy = dy.wait(conn.clone());
+        let x = x.wait(conn.clone());
+        let mut dx = self.wait_mut(conn.clone());
         let mut stream = conn.cuda_stream();
         let mut cudnn_h = conn.cudnn();
         assert!(cudnn_h.set_stream(&mut stream).is_ok());
@@ -334,14 +340,14 @@ where CudnnHandle: CudnnPoolExt<T>,
             &mut state.pool_desc,
             alpha,
             &mut state.dst_desc,
-            y.raw_dptr(),
+            y.as_dptr(),
             &mut state.dst2_desc,
-            dy.raw_dptr(),
+            dy.as_dptr(),
             &mut state.src_desc,
-            x.raw_dptr(),
+            x.as_dptr(),
             beta,
             &mut state.src2_desc,
-            self.raw_mut_dptr(),
+            dx.as_mut_dptr(),
         ) };
         assert!(status.is_ok());
       }
@@ -350,7 +356,7 @@ where CudnnHandle: CudnnPoolExt<T>,
   }
 }
 
-impl<T: Copy> GPUBatchPool3dOps<T> for GPUDeviceArrayViewMut5d<T>
+impl<T: Copy + 'static> GPUBatchPool3dOps<T> for GPUDeviceArrayViewMut5d<T>
 where CudnnHandle: CudnnPoolExt<T>,
       <CudnnHandle as CudnnPoolExt<T>>::HostScalar: Zero + One,
 {
@@ -363,6 +369,8 @@ where CudnnHandle: CudnnPoolExt<T>,
   {
     match state {
       &mut XGPUPoolState::Cudnn(ref mut state) => {
+        let x = x.wait(conn.clone());
+        let mut y = self.wait_mut(conn.clone());
         let mut stream = conn.cuda_stream();
         let mut cudnn_h = conn.cudnn();
         assert!(cudnn_h.set_stream(&mut stream).is_ok());
@@ -370,10 +378,10 @@ where CudnnHandle: CudnnPoolExt<T>,
             &mut state.pool_desc,
             alpha,
             &mut state.src_desc,
-            x.raw_dptr(),
+            x.as_dptr(),
             beta,
             &mut state.dst_desc,
-            self.raw_mut_dptr(),
+            y.as_mut_dptr(),
         ) };
         assert!(status.is_ok());
       }
@@ -392,6 +400,10 @@ where CudnnHandle: CudnnPoolExt<T>,
   {
     match state {
       &mut XGPUPoolState::Cudnn(ref mut state) => {
+        let y = y.wait(conn.clone());
+        let dy = dy.wait(conn.clone());
+        let x = x.wait(conn.clone());
+        let mut dx = self.wait_mut(conn.clone());
         let mut stream = conn.cuda_stream();
         let mut cudnn_h = conn.cudnn();
         assert!(cudnn_h.set_stream(&mut stream).is_ok());
@@ -399,14 +411,14 @@ where CudnnHandle: CudnnPoolExt<T>,
             &mut state.pool_desc,
             alpha,
             &mut state.dst_desc,
-            y.raw_dptr(),
+            y.as_dptr(),
             &mut state.dst2_desc,
-            dy.raw_dptr(),
+            dy.as_dptr(),
             &mut state.src_desc,
-            x.raw_dptr(),
+            x.as_dptr(),
             beta,
             &mut state.src2_desc,
-            self.raw_mut_dptr(),
+            dx.as_mut_dptr(),
         ) };
         assert!(status.is_ok());
       }

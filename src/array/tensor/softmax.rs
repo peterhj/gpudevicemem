@@ -139,7 +139,7 @@ pub trait GPUBatchSoftmaxOps<T: Copy> {
       conn: GPUDeviceConn);
 }
 
-impl<T: Copy> GPUBatchSoftmaxOps<T> for GPUDeviceArrayViewMut2d<T>
+impl<T: Copy + 'static> GPUBatchSoftmaxOps<T> for GPUDeviceArrayViewMut2d<T>
 where CudnnHandle: CudnnSoftmaxExt<T>,
       <CudnnHandle as CudnnSoftmaxExt<T>>::HostScalar: Zero + One,
 {
@@ -150,6 +150,8 @@ where CudnnHandle: CudnnSoftmaxExt<T>,
   {
     match state {
       &mut XGPUSoftmaxState::Cudnn(ref mut state) => {
+        let x = x.wait(conn.clone());
+        let mut y = self.wait_mut(conn.clone());
         let mut stream = conn.cuda_stream();
         let mut cudnn_h = conn.cudnn();
         assert!(cudnn_h.set_stream(&mut stream).is_ok());
@@ -160,10 +162,10 @@ where CudnnHandle: CudnnSoftmaxExt<T>,
             cudnnSoftmaxMode_t_CUDNN_SOFTMAX_MODE_INSTANCE,
             alpha,
             &mut state.src_desc,
-            x.raw_dptr(),
+            x.as_dptr(),
             beta,
             &mut state.dst_desc,
-            self.raw_mut_dptr(),
+            y.as_mut_dptr(),
         ) };
         assert!(status.is_ok());
       }
@@ -179,6 +181,9 @@ where CudnnHandle: CudnnSoftmaxExt<T>,
   {
     match state {
       &mut XGPUSoftmaxState::Cudnn(ref mut state) => {
+        let y = y.wait(conn.clone());
+        let dy = dy.wait(conn.clone());
+        let mut dx = self.wait_mut(conn.clone());
         let mut stream = conn.cuda_stream();
         let mut cudnn_h = conn.cudnn();
         assert!(cudnn_h.set_stream(&mut stream).is_ok());
@@ -189,12 +194,12 @@ where CudnnHandle: CudnnSoftmaxExt<T>,
             cudnnSoftmaxMode_t_CUDNN_SOFTMAX_MODE_INSTANCE,
             alpha,
             &mut state.dst_desc,
-            y.raw_dptr(),
+            y.as_dptr(),
             &mut state.dst2_desc,
-            dy.raw_dptr(),
+            dy.as_dptr(),
             beta,
             &mut state.src_desc,
-            self.raw_mut_dptr(),
+            dx.as_mut_dptr(),
         ) };
         assert!(status.is_ok());
       }

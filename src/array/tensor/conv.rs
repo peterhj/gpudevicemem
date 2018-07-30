@@ -1286,7 +1286,7 @@ pub trait GPUBatchOuterConv3dOps<WTy: Copy, XTy: Copy, YTy: Copy> where CudnnHan
       conn: GPUDeviceConn);
 }
 
-impl<WTy: Copy, XTy: Copy, YTy: Copy> GPUBatchConvOps<WTy, XTy, YTy> for GPUDeviceArrayViewMut4d<YTy>
+impl<WTy: Copy + 'static, XTy: Copy + 'static, YTy: Copy + 'static> GPUBatchConvOps<WTy, XTy, YTy> for GPUDeviceArrayViewMut4d<YTy>
 where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
 {
   fn batch_conv2d(&mut self,
@@ -1294,11 +1294,15 @@ where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
     state: &mut XGPUConvState<WTy, XTy, YTy>,
     w: GPUDeviceArrayView4d<WTy>,
     x: GPUDeviceArrayView4d<XTy>,
-    workspace: GPUDeviceArrayViewMut1d<u8>,
+    mut workspace: GPUDeviceArrayViewMut1d<u8>,
     conn: GPUDeviceConn)
   {
     match (cfg, state) {
       (&XGPUConvFwdConfig::Cudnn(ref cfg), &mut XGPUConvState::Cudnn(ref mut state)) => {
+        let w = w.wait(conn.clone());
+        let x = x.wait(conn.clone());
+        let mut workspace = workspace.wait_mut(conn.clone());
+        let mut y = self.wait_mut(conn.clone());
         let mut stream = conn.cuda_stream();
         let mut cudnn_h = conn.cudnn();
         assert!(cudnn_h.set_stream(&mut stream).is_ok());
@@ -1307,16 +1311,16 @@ where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
         let status = unsafe { cudnn_h.conv_fwd(
             alpha,
             &mut state.src_desc,
-            x.raw_dptr(),
+            x.as_dptr(),
             &mut state.kernel_desc,
-            w.raw_dptr(),
+            w.as_dptr(),
             &mut state.conv_desc,
             cfg.algo_desc,
-            workspace.raw_mut_dptr(),
-            workspace.size(),
+            workspace.as_mut_dptr(),
+            workspace.inner().size(),
             beta,
             &mut state.dst_desc,
-            self.raw_mut_dptr(),
+            y.as_mut_dptr(),
         ) };
         assert!(status.is_ok());
       }
@@ -1330,7 +1334,7 @@ where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
     w: GPUDeviceArrayView4d<WTy>,
     x: GPUDeviceArrayView4d<XTy>,
     b: GPUDeviceArrayView1d<WTy>,
-    workspace: GPUDeviceArrayViewMut1d<u8>,
+    mut workspace: GPUDeviceArrayViewMut1d<u8>,
     conn: GPUDeviceConn)
   {
     match (cfg, state) {
@@ -1345,21 +1349,21 @@ where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
         /*let status = unsafe { cudnn_h.conv_fwd_bias_act(
             alpha,
             &mut state.src_desc,
-            x.raw_dptr(),
+            x.as_dptr(),
             &mut state.kernel_desc,
-            w.raw_dptr(),
+            w.as_dptr(),
             &mut state.conv_desc,
             cfg.algo_desc,
-            workspace.raw_mut_dptr(),
-            workspace.size(),
+            workspace.as_mut_dptr(),
+            workspace.inner().size(),
             beta,
             &mut state.dst2_desc,
-            self.raw_dptr(),
+            self.as_dptr(),
             &mut state.bias_desc,
-            b.raw_dptr(),
+            b.as_dptr(),
             &mut state.identity_desc,
             &mut state.dst_desc,
-            self.raw_mut_dptr(),
+            self.as_mut_dptr(),
         ) };
         assert!(status.is_ok());*/
       }
@@ -1368,7 +1372,7 @@ where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
   }
 }
 
-impl<WTy: Copy, XTy: Copy, YTy: Copy> GPUBatchConv3dOps<WTy, XTy, YTy> for GPUDeviceArrayViewMut5d<YTy>
+impl<WTy: Copy + 'static, XTy: Copy + 'static, YTy: Copy + 'static> GPUBatchConv3dOps<WTy, XTy, YTy> for GPUDeviceArrayViewMut5d<YTy>
 where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
 {
   fn batch_conv3d(&mut self,
@@ -1378,27 +1382,31 @@ where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
     w: GPUDeviceArrayView5d<WTy>,
     x: GPUDeviceArrayView5d<XTy>,
     beta: <CudnnHandle as CudnnConvExt<WTy, XTy, YTy>>::HostScalar,
-    workspace: GPUDeviceArrayViewMut1d<u8>,
+    mut workspace: GPUDeviceArrayViewMut1d<u8>,
     conn: GPUDeviceConn)
   {
     match (cfg, state) {
       (&XGPUConvFwdConfig::Cudnn(ref cfg), &mut XGPUConvState::Cudnn(ref mut state)) => {
+        let w = w.wait(conn.clone());
+        let x = x.wait(conn.clone());
+        let mut workspace = workspace.wait_mut(conn.clone());
+        let mut y = self.wait_mut(conn.clone());
         let mut stream = conn.cuda_stream();
         let mut cudnn_h = conn.cudnn();
         assert!(cudnn_h.set_stream(&mut stream).is_ok());
         let status = unsafe { cudnn_h.conv_fwd(
             alpha,
             &mut state.src_desc,
-            x.raw_dptr(),
+            x.as_dptr(),
             &mut state.kernel_desc,
-            w.raw_dptr(),
+            w.as_dptr(),
             &mut state.conv_desc,
             cfg.algo_desc,
-            workspace.raw_mut_dptr(),
-            workspace.size(),
+            workspace.as_mut_dptr(),
+            workspace.inner().size(),
             beta,
             &mut state.dst_desc,
-            self.raw_mut_dptr(),
+            y.as_mut_dptr(),
         ) };
         assert!(status.is_ok());
       }
@@ -1407,7 +1415,7 @@ where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
   }
 }
 
-impl<WTy: Copy, XTy: Copy, YTy: Copy> GPUBatchConvReduceOps<WTy, XTy, YTy> for GPUDeviceArrayViewMut1d<WTy>
+impl<WTy: Copy + 'static, XTy: Copy + 'static, YTy: Copy + 'static> GPUBatchConvReduceOps<WTy, XTy, YTy> for GPUDeviceArrayViewMut1d<WTy>
 where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
 {
   fn batch_conv2d_reduce_bwd(&mut self,
@@ -1418,6 +1426,8 @@ where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
   {
     match state {
       &mut XGPUConvState::Cudnn(ref mut state) => {
+        let y = y.wait(conn.clone());
+        let mut x = self.wait_mut(conn.clone());
         let mut stream = conn.cuda_stream();
         let mut cudnn_h = conn.cudnn();
         assert!(cudnn_h.set_stream(&mut stream).is_ok());
@@ -1426,10 +1436,10 @@ where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
         let status = unsafe { cudnn_h.conv_bwd_bias(
             alpha,
             &mut state.dst_desc,
-            y.raw_dptr(),
+            y.as_dptr(),
             beta,
             &mut state.bias_desc,
-            self.raw_mut_dptr(),
+            x.as_mut_dptr(),
         ) };
         match status {
           Ok(_) => {}
@@ -1441,7 +1451,7 @@ where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
   }
 }
 
-impl<WTy: Copy, XTy: Copy, YTy: Copy> GPUBatchConv3dReduceOps<WTy, XTy, YTy> for GPUDeviceArrayViewMut1d<WTy>
+impl<WTy: Copy + 'static, XTy: Copy + 'static, YTy: Copy + 'static> GPUBatchConv3dReduceOps<WTy, XTy, YTy> for GPUDeviceArrayViewMut1d<WTy>
 where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
 {
   fn batch_conv3d_reduce_bwd(&mut self,
@@ -1453,16 +1463,18 @@ where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
   {
     match state {
       &mut XGPUConvState::Cudnn(ref mut state) => {
+        let y = y.wait(conn.clone());
+        let mut x = self.wait_mut(conn.clone());
         let mut stream = conn.cuda_stream();
         let mut cudnn_h = conn.cudnn();
         assert!(cudnn_h.set_stream(&mut stream).is_ok());
         let status = unsafe { cudnn_h.conv_bwd_bias(
             alpha,
             &mut state.dst_desc,
-            y.raw_dptr(),
+            y.as_dptr(),
             beta,
             &mut state.bias_desc,
-            self.raw_mut_dptr(),
+            x.as_mut_dptr(),
         ) };
         match status {
           Ok(_) => {}
@@ -1474,7 +1486,7 @@ where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
   }
 }
 
-impl<WTy: Copy, XTy: Copy, YTy: Copy> GPUBatchLTransConvOps<WTy, XTy, YTy> for GPUDeviceArrayViewMut4d<XTy>
+impl<WTy: Copy + 'static, XTy: Copy + 'static, YTy: Copy + 'static> GPUBatchLTransConvOps<WTy, XTy, YTy> for GPUDeviceArrayViewMut4d<XTy>
 where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
 {
   fn batch_left_transpose_conv2d(&mut self,
@@ -1482,11 +1494,15 @@ where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
       state: &mut XGPUConvState<WTy, XTy, YTy>,
       w: GPUDeviceArrayView4d<WTy>,
       y: GPUDeviceArrayView4d<YTy>,
-      workspace: GPUDeviceArrayViewMut1d<u8>,
+      mut workspace: GPUDeviceArrayViewMut1d<u8>,
       conn: GPUDeviceConn)
   {
     match (cfg, state) {
       (&XGPUConvBwdXConfig::Cudnn(ref cfg), &mut XGPUConvState::Cudnn(ref mut state)) => {
+        let w = w.wait(conn.clone());
+        let y = y.wait(conn.clone());
+        let mut workspace = workspace.wait_mut(conn.clone());
+        let mut x = self.wait_mut(conn.clone());
         let mut stream = conn.cuda_stream();
         let mut cudnn_h = conn.cudnn();
         assert!(cudnn_h.set_stream(&mut stream).is_ok());
@@ -1495,16 +1511,16 @@ where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
         let status = unsafe { cudnn_h.conv_bwd_data(
             alpha,
             &mut state.kernel_desc,
-            w.raw_dptr(),
+            w.as_dptr(),
             &mut state.dst_desc,
-            y.raw_dptr(),
+            y.as_dptr(),
             &mut state.conv_desc,
             cfg.algo_desc,
-            workspace.raw_mut_dptr(),
-            workspace.size(),
+            workspace.as_mut_dptr(),
+            workspace.inner().size(),
             beta,
             &mut state.src_desc,
-            self.raw_mut_dptr(),
+            x.as_mut_dptr(),
         ) };
         assert!(status.is_ok());
       }
@@ -1517,11 +1533,15 @@ where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
       state: &mut XGPUConvState<WTy, XTy, YTy>,
       w: GPUDeviceArrayView4d<WTy>,
       y: GPUDeviceArrayView4d<YTy>,
-      workspace: GPUDeviceArrayViewMut1d<u8>,
+      mut workspace: GPUDeviceArrayViewMut1d<u8>,
       conn: GPUDeviceConn)
   {
     match (cfg, state) {
       (&XGPUConvBwdXConfig::Cudnn(ref cfg), &mut XGPUConvState::Cudnn(ref mut state)) => {
+        let w = w.wait(conn.clone());
+        let y = y.wait(conn.clone());
+        let mut workspace = workspace.wait_mut(conn.clone());
+        let mut x = self.wait_mut(conn.clone());
         let mut stream = conn.cuda_stream();
         let mut cudnn_h = conn.cudnn();
         assert!(cudnn_h.set_stream(&mut stream).is_ok());
@@ -1530,16 +1550,16 @@ where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
         let status = unsafe { cudnn_h.conv_bwd_data(
             alpha,
             &mut state.kernel_desc,
-            w.raw_dptr(),
+            w.as_dptr(),
             &mut state.dst_desc,
-            y.raw_dptr(),
+            y.as_dptr(),
             &mut state.conv_desc,
             cfg.algo_desc,
-            workspace.raw_mut_dptr(),
-            workspace.size(),
+            workspace.as_mut_dptr(),
+            workspace.inner().size(),
             beta,
             &mut state.src_desc,
-            self.raw_mut_dptr(),
+            x.as_mut_dptr(),
         ) };
         assert!(status.is_ok());
       }
@@ -1548,7 +1568,7 @@ where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
   }
 }
 
-impl<WTy: Copy, XTy: Copy, YTy: Copy> GPUBatchLTransConv3dOps<WTy, XTy, YTy> for GPUDeviceArrayViewMut5d<XTy>
+impl<WTy: Copy + 'static, XTy: Copy + 'static, YTy: Copy + 'static> GPUBatchLTransConv3dOps<WTy, XTy, YTy> for GPUDeviceArrayViewMut5d<XTy>
 where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
 {
   fn batch_left_transpose_conv3d(&mut self,
@@ -1558,27 +1578,31 @@ where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
       w: GPUDeviceArrayView5d<WTy>,
       y: GPUDeviceArrayView5d<YTy>,
       beta: <CudnnHandle as CudnnConvExt<WTy, XTy, YTy>>::HostScalar,
-      workspace: GPUDeviceArrayViewMut1d<u8>,
+      mut workspace: GPUDeviceArrayViewMut1d<u8>,
       conn: GPUDeviceConn)
   {
     match (cfg, state) {
       (&XGPUConvBwdXConfig::Cudnn(ref cfg), &mut XGPUConvState::Cudnn(ref mut state)) => {
+        let w = w.wait(conn.clone());
+        let y = y.wait(conn.clone());
+        let mut workspace = workspace.wait_mut(conn.clone());
+        let mut x = self.wait_mut(conn.clone());
         let mut stream = conn.cuda_stream();
         let mut cudnn_h = conn.cudnn();
         assert!(cudnn_h.set_stream(&mut stream).is_ok());
         let status = unsafe { cudnn_h.conv_bwd_data(
             alpha,
             &mut state.kernel_desc,
-            w.raw_dptr(),
+            w.as_dptr(),
             &mut state.dst_desc,
-            y.raw_dptr(),
+            y.as_dptr(),
             &mut state.conv_desc,
             cfg.algo_desc,
-            workspace.raw_mut_dptr(),
-            workspace.size(),
+            workspace.as_mut_dptr(),
+            workspace.inner().size(),
             beta,
             &mut state.src_desc,
-            self.raw_mut_dptr(),
+            x.as_mut_dptr(),
         ) };
         assert!(status.is_ok());
       }
@@ -1587,7 +1611,7 @@ where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
   }
 }
 
-impl<WTy: Copy, XTy: Copy, YTy: Copy> GPUBatchOuterConvOps<WTy, XTy, YTy> for GPUDeviceArrayViewMut4d<WTy>
+impl<WTy: Copy + 'static, XTy: Copy + 'static, YTy: Copy + 'static> GPUBatchOuterConvOps<WTy, XTy, YTy> for GPUDeviceArrayViewMut4d<WTy>
 where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
 {
   fn batch_outer_conv2d(&mut self,
@@ -1595,11 +1619,15 @@ where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
       state: &mut XGPUConvState<WTy, XTy, YTy>,
       y: GPUDeviceArrayView4d<YTy>,
       x: GPUDeviceArrayView4d<XTy>,
-      workspace: GPUDeviceArrayViewMut1d<u8>,
+      mut workspace: GPUDeviceArrayViewMut1d<u8>,
       conn: GPUDeviceConn)
   {
     match (cfg, state) {
       (&XGPUConvBwdWConfig::Cudnn(ref cfg), &mut XGPUConvState::Cudnn(ref mut state)) => {
+        let y = y.wait(conn.clone());
+        let x = x.wait(conn.clone());
+        let mut workspace = workspace.wait_mut(conn.clone());
+        let mut w = self.wait_mut(conn.clone());
         let mut stream = conn.cuda_stream();
         let mut cudnn_h = conn.cudnn();
         assert!(cudnn_h.set_stream(&mut stream).is_ok());
@@ -1608,16 +1636,16 @@ where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
         let status = unsafe { cudnn_h.conv_bwd_filter(
             alpha,
             &mut state.src_desc,
-            x.raw_dptr(),
+            x.as_dptr(),
             &mut state.dst_desc,
-            y.raw_dptr(),
+            y.as_dptr(),
             &mut state.conv_desc,
             cfg.algo_desc,
-            workspace.raw_mut_dptr(),
-            workspace.size(),
+            workspace.as_mut_dptr(),
+            workspace.inner().size(),
             beta,
             &mut state.kernel_desc,
-            self.raw_mut_dptr(),
+            w.as_mut_dptr(),
         ) };
         assert!(status.is_ok());
       }
@@ -1626,7 +1654,7 @@ where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
   }
 }
 
-impl<WTy: Copy, XTy: Copy, YTy: Copy> GPUBatchOuterConv3dOps<WTy, XTy, YTy> for GPUDeviceArrayViewMut5d<WTy>
+impl<WTy: Copy + 'static, XTy: Copy + 'static, YTy: Copy + 'static> GPUBatchOuterConv3dOps<WTy, XTy, YTy> for GPUDeviceArrayViewMut5d<WTy>
 where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
 {
   fn batch_outer_conv3d(&mut self,
@@ -1636,27 +1664,31 @@ where CudnnHandle: CudnnConvExt<WTy, XTy, YTy>,
       y: GPUDeviceArrayView5d<YTy>,
       x: GPUDeviceArrayView5d<XTy>,
       beta: <CudnnHandle as CudnnConvExt<WTy, XTy, YTy>>::HostScalar,
-      workspace: GPUDeviceArrayViewMut1d<u8>,
+      mut workspace: GPUDeviceArrayViewMut1d<u8>,
       conn: GPUDeviceConn)
   {
     match (cfg, state) {
       (&XGPUConvBwdWConfig::Cudnn(ref cfg), &mut XGPUConvState::Cudnn(ref mut state)) => {
+        let y = y.wait(conn.clone());
+        let x = x.wait(conn.clone());
+        let mut workspace = workspace.wait_mut(conn.clone());
+        let mut w = self.wait_mut(conn.clone());
         let mut stream = conn.cuda_stream();
         let mut cudnn_h = conn.cudnn();
         assert!(cudnn_h.set_stream(&mut stream).is_ok());
         let status = unsafe { cudnn_h.conv_bwd_filter(
             alpha,
             &mut state.src_desc,
-            x.raw_dptr(),
+            x.as_dptr(),
             &mut state.dst_desc,
-            y.raw_dptr(),
+            y.as_dptr(),
             &mut state.conv_desc,
             cfg.algo_desc,
-            workspace.raw_mut_dptr(),
-            workspace.size(),
+            workspace.as_mut_dptr(),
+            workspace.inner().size(),
             beta,
             &mut state.kernel_desc,
-            self.raw_mut_dptr(),
+            w.as_mut_dptr(),
         ) };
         assert!(status.is_ok());
       }

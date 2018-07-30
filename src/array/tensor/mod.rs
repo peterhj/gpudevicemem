@@ -46,37 +46,43 @@ pub trait GPUTensorOps<T> where T: Copy {
 
 impl GPUTensorMutOps<f32> for GPUDeviceArrayViewMut4d<f32> {
   fn broadcast_add_1d_inplace(&mut self, x: GPUDeviceArrayView1d<f32>, axis: isize, conn: GPUDeviceConn) {
+    // TODO: size checks.
     if self.is_packed() && x.is_packed() {
+      let x = x.wait(conn.clone());
+      let mut y = self.wait_mut(conn.clone());
       let mut stream = conn.cuda_stream();
       match axis {
         0 => {
+          assert_eq!(x.inner().size(), y.inner().size().index_at(0));
           unsafe { gpudevicemem_bcast_flat_add_I1a_IO2ab_inplace_packed_f32(
-              sz2uint(self.size()[0]),
-              sz2uint(self.size()[1] * self.size()[2] * self.size()[3]),
-              x.raw_dptr(),
-              self.raw_mut_dptr(),
+              sz2uint(y.inner().size().index_at(0)),
+              sz2uint(y.inner().size().index_cut(0).flat_len()),
+              x.as_dptr(),
+              y.as_mut_dptr(),
               conn.cuda_kernel_cfg() as *const _,
               stream.as_mut_ptr(),
           ) };
         }
         1 => {
+          assert_eq!(x.inner().size(), y.inner().size().index_at(1));
           unsafe { gpudevicemem_bcast_flat_add_I1b_IO2abc_inplace_packed_f32(
-              sz2uint(self.size()[0]),
-              sz2uint(self.size()[1]),
-              sz2uint(self.size()[2] * self.size()[3]),
-              x.raw_dptr(),
-              self.raw_mut_dptr(),
+              sz2uint(y.inner().size().index_at(0)),
+              sz2uint(y.inner().size().index_at(1)),
+              sz2uint(y.inner().size().index_cut(1).index_cut(0).flat_len()),
+              x.as_dptr(),
+              y.as_mut_dptr(),
               conn.cuda_kernel_cfg() as *const _,
               stream.as_mut_ptr(),
           ) };
         }
         2 => {
+          assert_eq!(x.inner().size(), y.inner().size().index_at(2));
           unsafe { gpudevicemem_bcast_flat_add_I1b_IO2abc_inplace_packed_f32(
-              sz2uint(self.size()[0] * self.size()[1]),
-              sz2uint(self.size()[2]),
-              sz2uint(self.size()[3]),
-              x.raw_dptr(),
-              self.raw_mut_dptr(),
+              sz2uint(y.inner().size().index_cut(3).index_cut(2).flat_len()),
+              sz2uint(y.inner().size().index_at(2)),
+              sz2uint(y.inner().size().index_at(3)),
+              x.as_dptr(),
+              y.as_mut_dptr(),
               conn.cuda_kernel_cfg() as *const _,
               stream.as_mut_ptr(),
           ) };
@@ -93,8 +99,11 @@ impl GPUTensorMutOps<f32> for GPUDeviceArrayViewMut4d<f32> {
   }
 
   fn broadcast_mult_add_1d_inplace(&mut self, a: GPUDeviceArrayView1d<f32>, b: GPUDeviceArrayView1d<f32>, axis: isize, conn: GPUDeviceConn) {
-    // TODO
+    // TODO: size checks.
     if self.is_packed() && a.is_packed() && b.is_packed() {
+      let a = a.wait(conn.clone());
+      let b = b.wait(conn.clone());
+      let mut y = self.wait_mut(conn.clone());
       let mut stream = conn.cuda_stream();
       match axis {
         0 => {
@@ -107,13 +116,13 @@ impl GPUTensorMutOps<f32> for GPUDeviceArrayViewMut4d<f32> {
         }
         2 => {
           unsafe { gpudevicemem_bcast_flat_mult_add_I1b_I2abc_I3b_Oabc_packed_f32(
-              sz2uint(self.size()[0] * self.size()[1]),
-              sz2uint(self.size()[2]),
-              sz2uint(self.size()[3]),
-              a.raw_dptr(),
-              self.raw_dptr(),
-              b.raw_dptr(),
-              self.raw_mut_dptr(),
+              sz2uint(y.inner().size().index_cut(3).index_cut(2).flat_len()),
+              sz2uint(y.inner().size().index_at(2)),
+              sz2uint(y.inner().size().index_at(3)),
+              a.as_dptr(),
+              y.as_dptr(),
+              b.as_dptr(),
+              y.as_mut_dptr(),
               conn.cuda_kernel_cfg() as *const _,
               stream.as_mut_ptr(),
           ) }
@@ -132,48 +141,51 @@ impl GPUTensorMutOps<f32> for GPUDeviceArrayViewMut4d<f32> {
 
 impl GPUTensorMutOps<f32> for GPUDeviceArrayViewMut5d<f32> {
   fn broadcast_add_1d_inplace(&mut self, x: GPUDeviceArrayView1d<f32>, axis: isize, conn: GPUDeviceConn) {
+    // TODO: size checks.
     if self.is_packed() && x.is_packed() {
+      let x = x.wait(conn.clone());
+      let mut y = self.wait_mut(conn.clone());
       let mut stream = conn.cuda_stream();
       match axis {
         0 => {
           unsafe { gpudevicemem_bcast_flat_add_I1a_IO2ab_inplace_packed_f32(
-              sz2uint(self.size()[0]),
-              sz2uint(self.size()[1] * self.size()[2] * self.size()[3] * self.size()[4]),
-              x.raw_dptr(),
-              self.raw_mut_dptr(),
+              sz2uint(y.inner().size().index_at(0)),
+              sz2uint(y.inner().size().index_cut(0).flat_len()),
+              x.as_dptr(),
+              y.as_mut_dptr(),
               conn.cuda_kernel_cfg() as *const _,
               stream.as_mut_ptr(),
           ) };
         }
         1 => {
           unsafe { gpudevicemem_bcast_flat_add_I1b_IO2abc_inplace_packed_f32(
-              sz2uint(self.size()[0]),
-              sz2uint(self.size()[1]),
-              sz2uint(self.size()[2] * self.size()[3] * self.size()[4]),
-              x.raw_dptr(),
-              self.raw_mut_dptr(),
+              sz2uint(y.inner().size().index_at(0)),
+              sz2uint(y.inner().size().index_at(1)),
+              sz2uint(y.inner().size().index_cut(1).index_cut(0).flat_len()),
+              x.as_dptr(),
+              y.as_mut_dptr(),
               conn.cuda_kernel_cfg() as *const _,
               stream.as_mut_ptr(),
           ) };
         }
         2 => {
           unsafe { gpudevicemem_bcast_flat_add_I1b_IO2abc_inplace_packed_f32(
-              sz2uint(self.size()[0] * self.size()[1]),
-              sz2uint(self.size()[2]),
-              sz2uint(self.size()[3] * self.size()[4]),
-              x.raw_dptr(),
-              self.raw_mut_dptr(),
+              sz2uint(y.inner().size().index_cut(4).index_cut(3).index_cut(2).flat_len()),
+              sz2uint(y.inner().size().index_at(2)),
+              sz2uint(y.inner().size().index_cut(2).index_cut(1).index_cut(0).flat_len()),
+              x.as_dptr(),
+              y.as_mut_dptr(),
               conn.cuda_kernel_cfg() as *const _,
               stream.as_mut_ptr(),
           ) };
         }
         3 => {
           unsafe { gpudevicemem_bcast_flat_add_I1b_IO2abc_inplace_packed_f32(
-              sz2uint(self.size()[0] * self.size()[1] * self.size()[2]),
-              sz2uint(self.size()[3]),
-              sz2uint(self.size()[4]),
-              x.raw_dptr(),
-              self.raw_mut_dptr(),
+              sz2uint(y.inner().size().index_cut(4).index_cut(3).flat_len()),
+              sz2uint(y.inner().size().index_at(3)),
+              sz2uint(y.inner().size().index_at(4)),
+              x.as_dptr(),
+              y.as_mut_dptr(),
               conn.cuda_kernel_cfg() as *const _,
               stream.as_mut_ptr(),
           ) };
@@ -197,8 +209,10 @@ impl GPUTensorMutOps<f32> for GPUDeviceArrayViewMut5d<f32> {
 
 impl GPUTensorOps<f32> for GPUDeviceArrayView4d<f32> {
   fn reduce_sum_1d_to(&self, y: &mut GPUDeviceArrayViewMut1d<f32>, axis: isize, conn: GPUDeviceConn) {
-    // TODO
+    // TODO: size checks.
     if self.is_packed() && y.is_packed() {
+      let x = self.wait(conn.clone());
+      let mut y = y.wait_mut(conn.clone());
       let mut stream = conn.cuda_stream();
       match axis {
         0 => {
@@ -211,11 +225,11 @@ impl GPUTensorOps<f32> for GPUDeviceArrayView4d<f32> {
         }
         2 => {
           unsafe { gpudevicemem_sum_I1abc_Ob_packed_deterministic_f32(
-              sz2uint(self.size()[0] * self.size()[1]),
-              sz2uint(self.size()[2]),
-              sz2uint(self.size()[3]),
-              self.raw_dptr(),
-              y.raw_mut_dptr(),
+              sz2uint(x.inner().size().index_cut(3).index_cut(2).flat_len()),
+              sz2uint(x.inner().size().index_at(2)),
+              sz2uint(x.inner().size().index_at(3)),
+              x.as_dptr(),
+              y.as_mut_dptr(),
               conn.cuda_kernel_cfg() as *const _,
               stream.as_mut_ptr(),
           ) }
@@ -231,9 +245,13 @@ impl GPUTensorOps<f32> for GPUDeviceArrayView4d<f32> {
     }
   }
 
+  // TODO: naming convention should be "flat_mut"?
   fn mult_then_reduce_sum_1d_to(&self, x: GPUDeviceArrayView4d<f32>, y: &mut GPUDeviceArrayViewMut1d<f32>, axis: isize, conn: GPUDeviceConn) {
-    // TODO
+    // TODO: size checks.
     if self.is_packed() && y.is_packed() {
+      let w = self.wait(conn.clone());
+      let x = x.wait(conn.clone());
+      let mut y = y.wait_mut(conn.clone());
       let mut stream = conn.cuda_stream();
       match axis {
         0 => {
@@ -246,12 +264,12 @@ impl GPUTensorOps<f32> for GPUDeviceArrayView4d<f32> {
         }
         2 => {
           unsafe { gpudevicemem_mult_then_sum_I1abc_I2abc_Ob_packed_deterministic_f32(
-              sz2uint(self.size()[0] * self.size()[1]),
-              sz2uint(self.size()[2]),
-              sz2uint(self.size()[3]),
-              self.raw_dptr(),
-              x.raw_dptr(),
-              y.raw_mut_dptr(),
+              sz2uint(w.inner().size().index_cut(3).index_cut(2).flat_len()),
+              sz2uint(w.inner().size().index_at(2)),
+              sz2uint(w.inner().size().index_at(3)),
+              w.as_dptr(),
+              x.as_dptr(),
+              y.as_mut_dptr(),
               conn.cuda_kernel_cfg() as *const _,
               stream.as_mut_ptr(),
           ) }

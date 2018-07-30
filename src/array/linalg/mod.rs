@@ -47,6 +47,7 @@ pub trait GPUVectorMutOps<T> where T: Copy {
 
 impl GPUVectorOps<f32> for GPUDeviceArrayView1d<f32> {
   fn sync_vector_norm(&self, conn: GPUDeviceConn) -> f32 {
+    let x = self.wait(conn.clone());
     let mut stream = conn.cuda_stream();
     let mut cublas_h = conn.cublas();
     assert!(cublas_h.set_stream(&mut stream).is_ok());
@@ -57,8 +58,9 @@ impl GPUVectorOps<f32> for GPUDeviceArrayView1d<f32> {
     }
     let mut result: f32 = 0.0;
     let status = unsafe { cublas_h.nrm2(
-        sz2int(self.size()),
-        self.raw_dptr(), sz2int(self.stride()),
+        sz2int(x.inner().size()),
+        x.as_dptr(),
+        sz2int(x.inner().stride()),
         &mut result as *mut _,
     ) };
     assert!(status.is_ok());
@@ -68,27 +70,30 @@ impl GPUVectorOps<f32> for GPUDeviceArrayView1d<f32> {
 
 impl GPUVectorMutOps<f32> for GPUDeviceArrayViewMut1d<f32> {
   fn reduce_sum(&mut self, x: GPUDeviceArrayView2d<f32>, axis: isize, conn: GPUDeviceConn) {
+    // TODO: size checks.
     if self.is_packed() {
+      let x = x.wait(conn.clone());
+      let mut y = self.wait_mut(conn.clone());
       let mut stream = conn.cuda_stream();
       match axis {
         0 => {
-          assert_eq!(self.size(), x.size()[1]);
+          assert_eq!(y.inner().size(), x.inner().size()[1]);
           unsafe { gpudevicemem_sum_I1ab_Ob_packed_deterministic_f32(
-              sz2uint(x.size()[0]),
-              sz2uint(x.size()[1]),
-              x.raw_dptr(),
-              self.raw_mut_dptr(),
+              sz2uint(x.inner().size()[0]),
+              sz2uint(x.inner().size()[1]),
+              x.as_dptr(),
+              y.as_mut_dptr(),
               conn.cuda_kernel_cfg() as *const _,
               stream.as_mut_ptr(),
           ) };
         }
         1 => {
-          assert_eq!(self.size(), x.size()[0]);
+          assert_eq!(y.inner().size(), x.inner().size()[0]);
           unsafe { gpudevicemem_sum_I1ab_Oa_packed_deterministic_f32(
-              sz2uint(x.size()[0]),
-              sz2uint(x.size()[1]),
-              x.raw_dptr(),
-              self.raw_mut_dptr(),
+              sz2uint(x.inner().size()[0]),
+              sz2uint(x.inner().size()[1]),
+              x.as_dptr(),
+              y.as_mut_dptr(),
               conn.cuda_kernel_cfg() as *const _,
               stream.as_mut_ptr(),
           ) };
@@ -101,10 +106,18 @@ impl GPUVectorMutOps<f32> for GPUDeviceArrayViewMut1d<f32> {
   }
 
   fn matrix_vector_mult(&mut self,
+      //alpha: f32,
       w: GPUDeviceArrayView2d<f32>,
       x: GPUDeviceArrayView1d<f32>,
+      //beta: f32,
       conn: GPUDeviceConn)
   {
+    assert_eq!(w.size()[0], self.size());
+    assert_eq!(w.size()[1], x.size());
+    assert_eq!(w.stride()[0], 1);
+    let w = w.wait(conn.clone());
+    let x = x.wait(conn.clone());
+    let mut y = self.wait_mut(conn.clone());
     let mut stream = conn.cuda_stream();
     let mut cublas_h = conn.cublas();
     assert!(cublas_h.set_stream(&mut stream).is_ok());
@@ -113,34 +126,20 @@ impl GPUVectorMutOps<f32> for GPUDeviceArrayViewMut1d<f32> {
     #[cfg(feature = "cuda9")] {
       assert!(cublas_h.set_math_mode(CublasMathMode::Default).is_ok());
     }
-    assert_eq!(w.size()[0], self.size());
-    assert_eq!(w.size()[1], x.size());
-    assert_eq!(w.stride()[0], 1);
     let alpha: f32 = 1.0;
     let beta: f32 = 0.0;
     let status = unsafe { cublas_h.gemv(
         CublasTranspose::N,
-        sz2int(w.size()[0]),
-        sz2int(w.size()[1]),
+        sz2int(w.inner().size()[0]),
+        sz2int(w.inner().size()[1]),
         &alpha,
-        w.raw_dptr(), sz2int(w.stride()[1]),
-        x.raw_dptr(), sz2int(x.stride()),
+        w.as_dptr(), sz2int(w.inner().stride()[1]),
+        x.as_dptr(), sz2int(x.inner().stride()),
         &beta,
-        self.raw_mut_dptr(), sz2int(self.stride()),
+        y.as_mut_dptr(), sz2int(y.inner().stride()),
     ) };
     assert!(status.is_ok());
   }
-}
-
-pub fn gpu_matrix_vector_mult<T>(
-    w: GPUDeviceArrayView2d<T>,
-    x: GPUDeviceArrayView1d<T>,
-    mut y: GPUDeviceArrayViewMut1d<T>,
-    conn: GPUDeviceConn)
-where T: Copy,
-      GPUDeviceArrayViewMut1d<T>: GPUVectorMutOps<T>
-{
-  y.matrix_vector_mult(w, x, conn);
 }
 
 pub trait GPUMatrixOps<T> where T: Copy {
@@ -162,16 +161,19 @@ pub trait GPUMatrixOps<T> where T: Copy {
 
 impl GPUMatrixOps<f32> for GPUDeviceArrayViewMut2d<f32> {
   fn broadcast_add_vector_inplace(&mut self, x: GPUDeviceArrayView1d<f32>, axis: isize, conn: GPUDeviceConn) {
+    // TODO: size checks.
     if self.is_packed() && x.is_packed() {
+      let x = x.wait(conn.clone());
+      let mut y = self.wait_mut(conn.clone());
       let mut stream = conn.cuda_stream();
       match axis {
         0 => {
-          assert_eq!(x.size(), self.size()[0]);
+          assert_eq!(x.inner().size(), y.inner().size()[0]);
           unsafe { gpudevicemem_bcast_flat_add_I1a_IO2ab_inplace_packed_f32(
-              sz2uint(self.size()[0]),
-              sz2uint(self.size()[1]),
-              x.raw_dptr(),
-              self.raw_mut_dptr(),
+              sz2uint(y.inner().size()[0]),
+              sz2uint(y.inner().size()[1]),
+              x.as_dptr(),
+              y.as_mut_dptr(),
               conn.cuda_kernel_cfg() as *const _,
               stream.as_mut_ptr(),
           ) };
@@ -192,6 +194,15 @@ impl GPUMatrixOps<f32> for GPUDeviceArrayViewMut2d<f32> {
       x: GPUDeviceArrayView2d<f32>,
       conn: GPUDeviceConn)
   {
+    assert_eq!(w.size()[0], self.size()[0]);
+    assert_eq!(w.size()[1], x.size()[0]);
+    assert_eq!(x.size()[1], self.size()[1]);
+    assert_eq!(w.stride()[0], 1);
+    assert_eq!(x.stride()[0], 1);
+    assert_eq!(self.stride()[0], 1);
+    let w = w.wait(conn.clone());
+    let x = x.wait(conn.clone());
+    let mut y = self.wait_mut(conn.clone());
     let mut stream = conn.cuda_stream();
     let mut cublas_h = conn.cublas();
     assert!(cublas_h.set_stream(&mut stream).is_ok());
@@ -200,25 +211,19 @@ impl GPUMatrixOps<f32> for GPUDeviceArrayViewMut2d<f32> {
     #[cfg(feature = "cuda9")] {
       assert!(cublas_h.set_math_mode(CublasMathMode::Default).is_ok());
     }
-    assert_eq!(w.size()[0], self.size()[0]);
-    assert_eq!(w.size()[1], x.size()[0]);
-    assert_eq!(x.size()[1], self.size()[1]);
-    assert_eq!(w.stride()[0], 1);
-    assert_eq!(x.stride()[0], 1);
-    assert_eq!(self.stride()[0], 1);
     let alpha: f32 = 1.0;
     let beta: f32 = 0.0;
     let status = unsafe { cublas_h.gemm(
         CublasTranspose::N,
         CublasTranspose::N,
-        sz2int(w.size()[0]),
-        sz2int(x.size()[1]),
-        sz2int(w.size()[1]),
+        sz2int(w.inner().size()[0]),
+        sz2int(x.inner().size()[1]),
+        sz2int(w.inner().size()[1]),
         &alpha,
-        w.raw_dptr(), sz2int(w.stride()[1]),
-        x.raw_dptr(), sz2int(x.stride()[1]),
+        w.as_dptr(), sz2int(w.inner().stride()[1]),
+        x.as_dptr(), sz2int(x.inner().stride()[1]),
         &beta,
-        self.raw_mut_dptr(), sz2int(self.stride()[1]),
+        y.as_mut_dptr(), sz2int(y.inner().stride()[1]),
     ) };
     assert!(status.is_ok());
   }
@@ -228,6 +233,15 @@ impl GPUMatrixOps<f32> for GPUDeviceArrayViewMut2d<f32> {
       y: GPUDeviceArrayView2d<f32>,
       conn: GPUDeviceConn)
   {
+    assert_eq!(w.size()[1], self.size()[0]);
+    assert_eq!(w.size()[0], y.size()[0]);
+    assert_eq!(y.size()[1], self.size()[1]);
+    assert_eq!(w.stride()[0], 1);
+    assert_eq!(y.stride()[0], 1);
+    assert_eq!(self.stride()[0], 1);
+    let w = w.wait(conn.clone());
+    let y = y.wait(conn.clone());
+    let mut x = self.wait_mut(conn.clone());
     let mut stream = conn.cuda_stream();
     let mut cublas_h = conn.cublas();
     assert!(cublas_h.set_stream(&mut stream).is_ok());
@@ -236,25 +250,19 @@ impl GPUMatrixOps<f32> for GPUDeviceArrayViewMut2d<f32> {
     #[cfg(feature = "cuda9")] {
       assert!(cublas_h.set_math_mode(CublasMathMode::Default).is_ok());
     }
-    assert_eq!(w.size()[1], self.size()[0]);
-    assert_eq!(w.size()[0], y.size()[0]);
-    assert_eq!(y.size()[1], self.size()[1]);
-    assert_eq!(w.stride()[0], 1);
-    assert_eq!(y.stride()[0], 1);
-    assert_eq!(self.stride()[0], 1);
     let alpha: f32 = 1.0;
     let beta: f32 = 0.0;
     let status = unsafe { cublas_h.gemm(
         CublasTranspose::T,
         CublasTranspose::N,
-        sz2int(w.size()[1]),
-        sz2int(y.size()[1]),
-        sz2int(w.size()[0]),
+        sz2int(w.inner().size()[1]),
+        sz2int(y.inner().size()[1]),
+        sz2int(w.inner().size()[0]),
         &alpha,
-        w.raw_dptr(), sz2int(w.stride()[1]),
-        y.raw_dptr(), sz2int(y.stride()[1]),
+        w.as_dptr(), sz2int(w.inner().stride()[1]),
+        y.as_dptr(), sz2int(y.inner().stride()[1]),
         &beta,
-        self.raw_mut_dptr(), sz2int(self.stride()[1]),
+        x.as_mut_dptr(), sz2int(x.inner().stride()[1]),
     ) };
     assert!(status.is_ok());
   }
@@ -264,6 +272,15 @@ impl GPUMatrixOps<f32> for GPUDeviceArrayViewMut2d<f32> {
       x: GPUDeviceArrayView2d<f32>,
       conn: GPUDeviceConn)
   {
+    assert_eq!(y.size()[0], self.size()[0]);
+    assert_eq!(y.size()[1], x.size()[1]);
+    assert_eq!(x.size()[0], self.size()[1]);
+    assert_eq!(y.stride()[0], 1);
+    assert_eq!(x.stride()[0], 1);
+    assert_eq!(self.stride()[0], 1);
+    let y = y.wait(conn.clone());
+    let x = x.wait(conn.clone());
+    let mut w = self.wait_mut(conn.clone());
     let mut stream = conn.cuda_stream();
     let mut cublas_h = conn.cublas();
     assert!(cublas_h.set_stream(&mut stream).is_ok());
@@ -272,59 +289,20 @@ impl GPUMatrixOps<f32> for GPUDeviceArrayViewMut2d<f32> {
     #[cfg(feature = "cuda9")] {
       assert!(cublas_h.set_math_mode(CublasMathMode::Default).is_ok());
     }
-    assert_eq!(y.size()[0], self.size()[0]);
-    assert_eq!(y.size()[1], x.size()[1]);
-    assert_eq!(x.size()[0], self.size()[1]);
-    assert_eq!(y.stride()[0], 1);
-    assert_eq!(x.stride()[0], 1);
-    assert_eq!(self.stride()[0], 1);
     let alpha: f32 = 1.0;
     let beta: f32 = 0.0;
     let status = unsafe { cublas_h.gemm(
         CublasTranspose::N,
         CublasTranspose::T,
-        sz2int(y.size()[0]),
-        sz2int(x.size()[0]),
-        sz2int(y.size()[1]),
+        sz2int(y.inner().size()[0]),
+        sz2int(x.inner().size()[0]),
+        sz2int(y.inner().size()[1]),
         &alpha,
-        y.raw_dptr(), sz2int(y.stride()[1]),
-        x.raw_dptr(), sz2int(x.stride()[1]),
+        y.as_dptr(), sz2int(y.inner().stride()[1]),
+        x.as_dptr(), sz2int(x.inner().stride()[1]),
         &beta,
-        self.raw_mut_dptr(), sz2int(self.stride()[1]),
+        w.as_mut_dptr(), sz2int(w.inner().stride()[1]),
     ) };
     assert!(status.is_ok());
   }
 }
-
-/*pub fn gpu_matrix_mult<T>(
-    w: GPUDeviceArrayView2d<T>,
-    x: GPUDeviceArrayView2d<T>,
-    mut y: GPUDeviceArrayViewMut2d<T>,
-    conn: GPUDeviceConn)
-where T: Copy,
-      GPUDeviceArrayViewMut2d<T>: GPUMatrixOps<T>
-{
-  y.matrix_mult(w, x, conn);
-}
-
-pub fn gpu_left_transpose_matrix_mult<T>(
-    w: GPUDeviceArrayView2d<T>,
-    y: GPUDeviceArrayView2d<T>,
-    mut x: GPUDeviceArrayViewMut2d<T>,
-    conn: GPUDeviceConn)
-where T: Copy,
-      GPUDeviceArrayViewMut2d<T>: GPUMatrixOps<T>
-{
-  x.left_transpose_matrix_mult(w, y, conn);
-}
-
-pub fn gpu_right_transpose_matrix_mult<T>(
-    y: GPUDeviceArrayView2d<T>,
-    x: GPUDeviceArrayView2d<T>,
-    mut w: GPUDeviceArrayViewMut2d<T>,
-    conn: GPUDeviceConn)
-where T: Copy,
-      GPUDeviceArrayViewMut2d<T>: GPUMatrixOps<T>
-{
-  w.right_transpose_matrix_mult(y, x, conn);
-}*/
