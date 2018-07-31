@@ -63,6 +63,16 @@ pub trait FlatViewMut: FlatView {
   fn flat_view_mut(&mut self) -> Option<Self::FlatViewMutTy>;
 }
 
+pub trait SqueezeView<ViewTy> {
+  fn as_view_or_squeeze(&self, axis: isize) -> ViewTy;
+}
+
+impl<ViewTy, A> SqueezeView<ViewTy> for A where A: AsView<ViewTy=ViewTy> {
+  default fn as_view_or_squeeze(&self, _axis: isize) -> ViewTy {
+    self.as_view()
+  }
+}
+
 // TODO: waiting on trait aliases.
 //pub trait GPUFlatView<T> = FlatView<FlatViewTy=GPUDeviceArrayView1d<T>> where T: Copy;
 //pub trait GPUFlatViewMut<T> = GPUFlatView<T> + FlatViewMut<FlatViewMutTy=GPUDeviceArrayViewMut1d<T>> where T: Copy;
@@ -568,6 +578,26 @@ pub type GPUDeviceArrayView2d<T> = GPUDeviceArrayView<Index2d, T>;
 pub type GPUDeviceArrayView3d<T> = GPUDeviceArrayView<Index3d, T>;
 pub type GPUDeviceArrayView4d<T> = GPUDeviceArrayView<Index4d, T>;
 pub type GPUDeviceArrayView5d<T> = GPUDeviceArrayView<Index5d, T>;
+
+impl<T> SqueezeView<GPUDeviceArrayView4d<T>> for GPUDeviceArrayView5d<T> where T: Copy {
+  fn as_view_or_squeeze(&self, axis: isize) -> GPUDeviceArrayView4d<T> {
+    if self.is_packed() && self.size().index_at(axis) == 1 {
+      assert_eq!(0, self.offset().index_at(axis));
+      let squeeze_size = self.size().index_cut(axis);
+      let squeeze_offset = self.offset().index_cut(axis);
+      let squeeze_stride = squeeze_size.to_packed_stride();
+      GPUDeviceArrayView{
+        base:     self.base,
+        size:     squeeze_size,
+        offset:   squeeze_offset,
+        stride:   squeeze_stride,
+        mem:      self.mem.clone(),
+      }
+    } else {
+      unimplemented!();
+    }
+  }
+}
 
 impl<Idx, T> GPUDeviceMem<T> for GPUDeviceArrayView<Idx, T> where Idx: ArrayIndex, T: Copy {
   unsafe fn raw_dptr(&self) -> *const T {
