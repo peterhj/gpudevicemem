@@ -41,6 +41,20 @@ void gpudevicemem_bcast_packed_accumulate_f32(
     float *y,
     const struct KernelConfig *cfg,
     struct CUstream_st *stream);
+void gpudevicemem_bcast_Ib_Oab_packed_f32(
+    uint32_t inner_dim,
+    uint32_t outer_dim,
+    const float *x,
+    float *y,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream);
+void gpudevicemem_bcast_Ib_Oab_packed_accumulate_f32(
+    uint32_t inner_dim,
+    uint32_t outer_dim,
+    const float *x,
+    float *y,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream);
 
 // "bcast_flat_linear.cu"
 
@@ -109,6 +123,14 @@ void gpudevicemem_bcast_flat_mult_add_I1b_I2abc_I3b_Oabc_packed_f32(
     const float *lx,
     const float *rx,
     const float *shift,
+    float *y,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream);
+void gpudevicemem_flat_bcast_rdiv_I1ab_I2b_Oab_packed_f32(
+    uint32_t inner_dim,
+    uint32_t outer_dim,
+    const float *lx,
+    const float *rx,
     float *y,
     const struct KernelConfig *cfg,
     struct CUstream_st *stream);
@@ -186,6 +208,18 @@ void gpudevicemem_online_discount_flat_map_accum_f32(
 void gpudevicemem_online_average_flat_map_accum_f32(
     uint32_t len,
     float c,
+    const float *x,
+    float *y,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream);
+void gpudevicemem_is_nonzero_flat_map_f32(
+    uint32_t len,
+    const float *x,
+    float *y,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream);
+void gpudevicemem_is_zero_flat_map_f32(
+    uint32_t len,
     const float *x,
     float *y,
     const struct KernelConfig *cfg,

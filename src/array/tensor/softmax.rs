@@ -25,7 +25,7 @@ use float::stub::*;
 use num_traits::identities::*;
 
 use std::collections::{HashMap};
-use std::mem::{uninitialized};
+//use std::mem::{uninitialized};
 //use std::ptr::{null, null_mut};
 use std::sync::{Arc, Mutex};
 

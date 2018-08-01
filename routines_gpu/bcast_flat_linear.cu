@@ -311,3 +311,38 @@ extern "C" void gpudevicemem_bcast_flat_mult_add_I1b_I2abc_I3b_Oabc_packed_f32(
   gpudevicemem_bcast_flat_mult_add_I1b_I2abc_I3b_Oabc_packed_kernel<float><<<cfg->flat_grid_dim(len), cfg->flat_block_dim(), 0, stream>>>(
       len, inner_dim, bcast_dim, outer_dim, lx, rx, shift, y);
 }
+
+template <typename T>
+__global__ void gpudevicemem_flat_bcast_rdiv_I1ab_I2b_Oab_packed_kernel(
+    uint32_t len,
+    uint32_t inner_dim,
+    uint32_t outer_dim,
+    const T *lx,
+    const T *rx,
+    T *y)
+{
+  for (uint32_t idx = gtindex(); idx < len; idx += gtcount()) {
+    uint32_t _i0, i1;
+    Index2::Unpack(
+        idx,
+        &_i0, inner_dim,
+        &i1);
+    T lx_i = lx[idx];
+    T rx_i = rx[i1];
+    y[idx] = lx_i / rx_i;
+  }
+}
+
+extern "C" void gpudevicemem_flat_bcast_rdiv_I1ab_I2b_Oab_packed_f32(
+    uint32_t inner_dim,
+    uint32_t outer_dim,
+    const float *lx,
+    const float *rx,
+    float *y,
+    const KernelConfig *cfg,
+    cudaStream_t stream)
+{
+  uint32_t len = inner_dim * outer_dim;
+  gpudevicemem_flat_bcast_rdiv_I1ab_I2b_Oab_packed_kernel<float><<<cfg->flat_grid_dim(len), cfg->flat_block_dim(), 0, stream>>>(
+      len, inner_dim, outer_dim, lx, rx, y);
+}

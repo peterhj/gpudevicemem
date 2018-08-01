@@ -183,8 +183,38 @@ extern "C" void gpudevicemem_online_average_flat_map_accum_f32(
       len, c, x, y);
 }
 
-/*template <typename T, typename FlatMap>
-__global__ void gpudevicemem_generic_flat_map_kernel(
+template <typename T>
+class IsNonzeroFlatMap {
+public:
+  __forceinline__ __device__ static void FlatMapIndex(uint32_t idx, const T *x, T *y);
+};
+
+template <>
+class IsNonzeroFlatMap<float> {
+public:
+  __forceinline__ __device__ static void FlatMapIndex(uint32_t idx, const float *x, float *y) {
+    float x_i = x[idx];
+    y[idx] = (float)(0.0f != x_i);
+  }
+};
+
+template <typename T>
+class IsZeroFlatMap {
+public:
+  __forceinline__ __device__ static void FlatMapIndex(uint32_t idx, const T *x, T *y);
+};
+
+template <>
+class IsZeroFlatMap<float> {
+public:
+  __forceinline__ __device__ static void FlatMapIndex(uint32_t idx, const float *x, float *y) {
+    float x_i = x[idx];
+    y[idx] = (float)(0.0f == x_i);
+  }
+};
+
+template <typename T, typename FlatMap>
+__global__ void gpudevicemem_flat_map_kernel(
     uint32_t len,
     const T *x,
     T *y)
@@ -192,4 +222,26 @@ __global__ void gpudevicemem_generic_flat_map_kernel(
   for (uint32_t idx = gtindex(); idx < len; idx += gtcount()) {
     FlatMap::FlatMapIndex(idx, x, y);
   }
-}*/
+}
+
+extern "C" void gpudevicemem_is_nonzero_flat_map_f32(
+    uint32_t len,
+    const float *x,
+    float *y,
+    const KernelConfig *cfg,
+    cudaStream_t stream)
+{
+  gpudevicemem_flat_map_kernel<float, IsNonzeroFlatMap<float>><<<cfg->flat_grid_dim(len), cfg->flat_block_dim(), 0, stream>>>(
+      len, x, y);
+}
+
+extern "C" void gpudevicemem_is_zero_flat_map_f32(
+    uint32_t len,
+    const float *x,
+    float *y,
+    const KernelConfig *cfg,
+    cudaStream_t stream)
+{
+  gpudevicemem_flat_map_kernel<float, IsZeroFlatMap<float>><<<cfg->flat_grid_dim(len), cfg->flat_block_dim(), 0, stream>>>(
+      len, x, y);
+}

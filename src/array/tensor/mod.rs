@@ -20,6 +20,7 @@ use ::ffi::routines_gpu::*;
 
 pub mod conv;
 pub mod pool;
+pub mod reduce;
 pub mod softmax;
 
 #[inline]

@@ -56,6 +56,8 @@ fn main() {
     // "bcast.cu"
     .whitelist_function("gpudevicemem_bcast_packed_f32")
     .whitelist_function("gpudevicemem_bcast_packed_accumulate_f32")
+    .whitelist_function("gpudevicemem_bcast_Ib_Oab_packed_f32")
+    .whitelist_function("gpudevicemem_bcast_Ib_Oab_packed_accumulate_f32")
     // "bcast_flat_linear.cu"
     .whitelist_function("gpudevicemem_bcast_flat_add_I1a_I2ab_Oab_packed_f32")
     .whitelist_function("gpudevicemem_bcast_flat_add_I1a_IO2ab_inplace_packed_f32")
@@ -65,6 +67,7 @@ fn main() {
     .whitelist_function("gpudevicemem_bcast_flat_mult_add_I1b_I2ab_I3b_Oab_packed_f32")
     .whitelist_function("gpudevicemem_bcast_flat_mult_I1b_I2abc_Oabc_packed_f32")
     .whitelist_function("gpudevicemem_bcast_flat_mult_add_I1b_I2abc_I3b_Oabc_packed_f32")
+    .whitelist_function("gpudevicemem_flat_bcast_rdiv_I1ab_I2b_Oab_packed_f32")
     // "flat_linear.cu"
     .whitelist_function("gpudevicemem_flat_add_inplace_f32")
     .whitelist_function("gpudevicemem_flat_mult_inplace_f32")
@@ -77,6 +80,8 @@ fn main() {
     .whitelist_function("gpudevicemem_online_add_flat_map_accum_f32")
     .whitelist_function("gpudevicemem_online_discount_flat_map_accum_f32")
     .whitelist_function("gpudevicemem_online_average_flat_map_accum_f32")
+    .whitelist_function("gpudevicemem_is_nonzero_flat_map_f32")
+    .whitelist_function("gpudevicemem_is_zero_flat_map_f32")
     // "reduce.cu"
     .whitelist_function("gpudevicemem_sum_packed_deterministic_f32")
     .whitelist_function("gpudevicemem_sum_packed_accumulate_deterministic_f32")

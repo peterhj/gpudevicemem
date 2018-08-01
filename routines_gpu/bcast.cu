@@ -53,3 +53,48 @@ extern "C" void gpudevicemem_bcast_packed_accumulate_f32(
   gpudevicemem_bcast_packed_kernel<float, AccumulateWrite<float>><<<cfg->flat_grid_dim(len), cfg->flat_block_dim(), 0, stream>>>(
       bcast_dim, x, y);
 }
+
+template <typename T, typename Write>
+__global__ void gpudevicemem_bcast_Ib_Oab_packed_kernel(
+    uint32_t len,
+    uint32_t inner_dim,
+    uint32_t outer_dim,
+    const T *x,
+    T *y)
+{
+  for (uint32_t idx = gtindex(); idx < len; idx += gtcount()) {
+    uint32_t _i0, i1;
+    Index2::Unpack(
+        idx,
+        &_i0, inner_dim,
+        &i1);
+    T x_i = x[i1];
+    Write::Write(&y[idx], x_i);
+  }
+}
+
+extern "C" void gpudevicemem_bcast_Ib_Oab_packed_f32(
+    uint32_t inner_dim,
+    uint32_t outer_dim,
+    const float *x,
+    float *y,
+    const KernelConfig *cfg,
+    cudaStream_t stream)
+{
+  uint32_t len = inner_dim * outer_dim;
+  gpudevicemem_bcast_Ib_Oab_packed_kernel<float, AssignWrite<float>><<<cfg->flat_grid_dim(len), cfg->flat_block_dim(), 0, stream>>>(
+      len, inner_dim, outer_dim, x, y);
+}
+
+extern "C" void gpudevicemem_bcast_Ib_Oab_packed_accumulate_f32(
+    uint32_t inner_dim,
+    uint32_t outer_dim,
+    const float *x,
+    float *y,
+    const KernelConfig *cfg,
+    cudaStream_t stream)
+{
+  uint32_t len = inner_dim * outer_dim;
+  gpudevicemem_bcast_Ib_Oab_packed_kernel<float, AccumulateWrite<float>><<<cfg->flat_grid_dim(len), cfg->flat_block_dim(), 0, stream>>>(
+      len, inner_dim, outer_dim, x, y);
+}
