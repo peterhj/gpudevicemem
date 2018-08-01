@@ -225,6 +225,7 @@ impl GPUTensorOps<f32> for GPUDeviceArrayView4d<f32> {
           unimplemented!();
         }
         2 => {
+          assert_eq!(x.inner().size().index_at(2), y.inner().size());
           unsafe { gpudevicemem_sum_I1abc_Ob_packed_deterministic_f32(
               sz2uint(x.inner().size().index_cut(3).index_cut(2).flat_len()),
               sz2uint(x.inner().size().index_at(2)),
@@ -236,8 +237,17 @@ impl GPUTensorOps<f32> for GPUDeviceArrayView4d<f32> {
           ) }
         }
         3 | -1 => {
-          // TODO
-          unimplemented!();
+          assert_eq!(x.inner().size().index_at(3), y.inner().size());
+          // TODO: could use a better implementation for this.
+          unsafe { gpudevicemem_sum_I1abc_Ob_packed_deterministic_f32(
+              sz2uint(x.inner().size().index_cut(3).flat_len()),
+              sz2uint(x.inner().size().index_at(3)),
+              1,
+              x.as_dptr(),
+              y.as_mut_dptr(),
+              conn.cuda_kernel_cfg() as *const _,
+              stream.as_mut_ptr(),
+          ) }
         }
         _ => unreachable!(),
       }
@@ -264,6 +274,7 @@ impl GPUTensorOps<f32> for GPUDeviceArrayView4d<f32> {
           unimplemented!();
         }
         2 => {
+          assert_eq!(x.inner().size().index_at(2), y.inner().size());
           unsafe { gpudevicemem_mult_then_sum_I1abc_I2abc_Ob_packed_deterministic_f32(
               sz2uint(w.inner().size().index_cut(3).index_cut(2).flat_len()),
               sz2uint(w.inner().size().index_at(2)),

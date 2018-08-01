@@ -855,6 +855,7 @@ pub trait GPUDeviceArrayViewMutOpsExt {
   fn copy(&mut self, src: Self::ViewTy, conn: GPUDeviceConn);
   fn add(&mut self, x: Self::ViewTy, conn: GPUDeviceConn);
   fn mult(&mut self, x: Self::ViewTy, conn: GPUDeviceConn);
+  fn is_nonzero(&mut self, x: Self::ViewTy, conn: GPUDeviceConn);
 }
 
 pub trait GPUDeviceArrayViewMutConstantOpsExt<T>: GPUDeviceArrayViewMutOpsExt where T: Copy {
@@ -910,6 +911,11 @@ impl<Idx, T> GPUDeviceArrayViewMutOpsExt for GPUDeviceArrayViewMut<Idx, T> where
     // TODO
     unimplemented!();
   }
+
+  default fn is_nonzero(&mut self, x: GPUDeviceArrayView<Idx, T>, conn: GPUDeviceConn) {
+    // TODO
+    unimplemented!();
+  }
 }
 
 impl<Idx, T> GPUDeviceArrayViewMutOpsExt for GPUDeviceArrayViewMut<Idx, T> where Idx: ArrayIndex, T: ZeroBits + 'static {
@@ -942,7 +948,8 @@ impl<Idx, T> GPUDeviceArrayViewMutOpsExt for GPUDeviceArrayViewMut<Idx, T> where
 
 impl<Idx> GPUDeviceArrayViewMutOpsExt for GPUDeviceArrayViewMut<Idx, f32> where Idx: ArrayIndex {
   fn add(&mut self, x: GPUDeviceArrayView<Idx, f32>, conn: GPUDeviceConn) {
-    if self.is_packed() {
+    assert_eq!(x.size(), self.size());
+    if x.is_packed() && self.is_packed() {
       // TODO: size checks.
       let len = self.flat_size();
       let x = x.wait(conn.clone());
@@ -962,7 +969,8 @@ impl<Idx> GPUDeviceArrayViewMutOpsExt for GPUDeviceArrayViewMut<Idx, f32> where 
   }
 
   fn mult(&mut self, x: GPUDeviceArrayView<Idx, f32>, conn: GPUDeviceConn) {
-    if self.is_packed() {
+    assert_eq!(x.size(), self.size());
+    if x.is_packed() && self.is_packed() {
       // TODO: size checks.
       let len = self.flat_size();
       let x = x.wait(conn.clone());
@@ -970,6 +978,27 @@ impl<Idx> GPUDeviceArrayViewMutOpsExt for GPUDeviceArrayViewMut<Idx, f32> where 
       let mut stream = conn.cuda_stream();
       // TODO: error handling.
       unsafe { gpudevicemem_flat_mult_inplace_f32(
+          sz2uint(len),
+          x.as_dptr(),
+          y.as_mut_dptr(),
+          conn.cuda_kernel_cfg() as *const _,
+          stream.as_mut_ptr(),
+      ) };
+    } else {
+      unimplemented!();
+    }
+  }
+
+  fn is_nonzero(&mut self, x: GPUDeviceArrayView<Idx, f32>, conn: GPUDeviceConn) {
+    assert_eq!(x.size(), self.size());
+    if x.is_packed() && self.is_packed() {
+      // TODO: size checks.
+      let len = self.flat_size();
+      let x = x.wait(conn.clone());
+      let mut y = self.wait_mut(conn.clone());
+      let mut stream = conn.cuda_stream();
+      // TODO: error handling.
+      unsafe { gpudevicemem_is_nonzero_flat_map_f32(
           sz2uint(len),
           x.as_dptr(),
           y.as_mut_dptr(),
