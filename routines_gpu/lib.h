@@ -191,6 +191,20 @@ void gpudevicemem_mult_constant_flat_map_f32(
     float *y,
     const struct KernelConfig *cfg,
     struct CUstream_st *stream);
+void gpudevicemem_rdiv_constant_flat_map_f32(
+    uint32_t len,
+    float c,
+    const float *x,
+    float *y,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream);
+void gpudevicemem_ldiv_constant_flat_map_f32(
+    uint32_t len,
+    float c,
+    const float *x,
+    float *y,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream);
 void gpudevicemem_online_add_flat_map_accum_f32(
     uint32_t len,
     float c,

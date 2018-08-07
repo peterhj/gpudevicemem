@@ -85,6 +85,22 @@ public:
 };
 
 template <typename T>
+class RDivConstantFlatMap {
+public:
+  __forceinline__ __device__ static void ConstantFlatMapIndex(uint32_t idx, T c, const T *x, T *y) {
+    y[idx] = x[idx] / c;
+  }
+};
+
+template <typename T>
+class LDivConstantFlatMap {
+public:
+  __forceinline__ __device__ static void ConstantFlatMapIndex(uint32_t idx, T c, const T *x, T *y) {
+    y[idx] = c / x[idx];
+  }
+};
+
+template <typename T>
 class OnlineAddFlatMapAccumulate {
 public:
   __forceinline__ __device__ static void ConstantFlatMapIndex(uint32_t idx, T c, const T *x, T *y) {
@@ -144,6 +160,30 @@ extern "C" void gpudevicemem_mult_constant_flat_map_f32(
     cudaStream_t stream)
 {
   gpudevicemem_constant_flat_map_kernel<float, MultConstantFlatMap<float>><<<cfg->flat_grid_dim(len), cfg->flat_block_dim(), 0, stream>>>(
+      len, c, x, y);
+}
+
+extern "C" void gpudevicemem_rdiv_constant_flat_map_f32(
+    uint32_t len,
+    float c,
+    const float *x,
+    float *y,
+    const KernelConfig *cfg,
+    cudaStream_t stream)
+{
+  gpudevicemem_constant_flat_map_kernel<float, RDivConstantFlatMap<float>><<<cfg->flat_grid_dim(len), cfg->flat_block_dim(), 0, stream>>>(
+      len, c, x, y);
+}
+
+extern "C" void gpudevicemem_ldiv_constant_flat_map_f32(
+    uint32_t len,
+    float c,
+    const float *x,
+    float *y,
+    const KernelConfig *cfg,
+    cudaStream_t stream)
+{
+  gpudevicemem_constant_flat_map_kernel<float, LDivConstantFlatMap<float>><<<cfg->flat_grid_dim(len), cfg->flat_block_dim(), 0, stream>>>(
       len, c, x, y);
 }
 

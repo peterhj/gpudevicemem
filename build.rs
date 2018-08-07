@@ -76,7 +76,10 @@ fn main() {
     // "flat_map.cu"
     .whitelist_function("gpudevicemem_set_constant_flat_map_inplace_f32")
     .whitelist_function("gpudevicemem_add_constant_flat_map_inplace_f32")
+    .whitelist_function("gpudevicemem_add_constant_flat_map_f32")
     .whitelist_function("gpudevicemem_mult_constant_flat_map_f32")
+    .whitelist_function("gpudevicemem_rdiv_constant_flat_map_f32")
+    .whitelist_function("gpudevicemem_ldiv_constant_flat_map_f32")
     .whitelist_function("gpudevicemem_online_add_flat_map_accum_f32")
     .whitelist_function("gpudevicemem_online_discount_flat_map_accum_f32")
     .whitelist_function("gpudevicemem_online_average_flat_map_accum_f32")

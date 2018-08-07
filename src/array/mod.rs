@@ -876,7 +876,9 @@ pub trait GPUDeviceArrayViewMutOpsExt {
 pub trait GPUDeviceArrayViewMutConstantOpsExt<T>: GPUDeviceArrayViewMutOpsExt where T: Copy {
   fn set_constant(&mut self, c: T, conn: GPUDeviceConn);
   fn add_constant_inplace(&mut self, c: T, conn: GPUDeviceConn);
+  fn add_constant(&mut self, c: T, x: Self::ViewTy, conn: GPUDeviceConn);
   fn mult_constant(&mut self, c: T, x: Self::ViewTy, conn: GPUDeviceConn);
+  fn div_constant(&mut self, x: Self::ViewTy, c: T, conn: GPUDeviceConn);
   fn online_add(&mut self, c: T, x: Self::ViewTy, conn: GPUDeviceConn);
   fn online_discount(&mut self, c: T, x: Self::ViewTy, conn: GPUDeviceConn);
   fn online_average(&mut self, c: T, x: Self::ViewTy, conn: GPUDeviceConn);
@@ -1053,7 +1055,17 @@ impl<Idx, T> GPUDeviceArrayViewMutConstantOpsExt<T> for GPUDeviceArrayViewMut<Id
     unimplemented!();
   }
 
+  default fn add_constant(&mut self, c: T, x: GPUDeviceArrayView<Idx, T>, conn: GPUDeviceConn) {
+    // TODO
+    unimplemented!();
+  }
+
   default fn mult_constant(&mut self, c: T, x: GPUDeviceArrayView<Idx, T>, conn: GPUDeviceConn) {
+    // TODO
+    unimplemented!();
+  }
+
+  default fn div_constant(&mut self, x: GPUDeviceArrayView<Idx, T>, c: T, conn: GPUDeviceConn) {
     // TODO
     unimplemented!();
   }
@@ -1097,7 +1109,17 @@ impl<Idx> GPUDeviceArrayViewMutConstantOpsExt<u8> for GPUDeviceArrayViewMut<Idx,
     unimplemented!();
   }
 
+  fn add_constant(&mut self, c: u8, x: GPUDeviceArrayView<Idx, u8>, conn: GPUDeviceConn) {
+    // TODO
+    unimplemented!();
+  }
+
   fn mult_constant(&mut self, c: u8, x: GPUDeviceArrayView<Idx, u8>, conn: GPUDeviceConn) {
+    // TODO
+    unimplemented!();
+  }
+
+  fn div_constant(&mut self, x: GPUDeviceArrayView<Idx, u8>, c: u8, conn: GPUDeviceConn) {
     // TODO
     unimplemented!();
   }
@@ -1155,6 +1177,27 @@ impl<Idx> GPUDeviceArrayViewMutConstantOpsExt<f32> for GPUDeviceArrayViewMut<Idx
     }
   }
 
+  fn add_constant(&mut self, c: f32, x: GPUDeviceArrayView<Idx, f32>, conn: GPUDeviceConn) {
+    if self.is_packed() {
+      // TODO: size checks.
+      let len = self.flat_size();
+      let x = x.wait(conn.clone());
+      let mut y = self.wait_mut(conn.clone());
+      let mut stream = conn.cuda_stream();
+      // TODO: error handling.
+      unsafe { gpudevicemem_add_constant_flat_map_f32(
+          sz2uint(len),
+          c,
+          x.as_dptr(),
+          y.as_mut_dptr(),
+          conn.cuda_kernel_cfg() as *const _,
+          stream.as_mut_ptr(),
+      ) };
+    } else {
+      unimplemented!();
+    }
+  }
+
   fn mult_constant(&mut self, c: f32, x: GPUDeviceArrayView<Idx, f32>, conn: GPUDeviceConn) {
     if self.is_packed() {
       // TODO: size checks.
@@ -1164,6 +1207,27 @@ impl<Idx> GPUDeviceArrayViewMutConstantOpsExt<f32> for GPUDeviceArrayViewMut<Idx
       let mut stream = conn.cuda_stream();
       // TODO: error handling.
       unsafe { gpudevicemem_mult_constant_flat_map_f32(
+          sz2uint(len),
+          c,
+          x.as_dptr(),
+          y.as_mut_dptr(),
+          conn.cuda_kernel_cfg() as *const _,
+          stream.as_mut_ptr(),
+      ) };
+    } else {
+      unimplemented!();
+    }
+  }
+
+  fn div_constant(&mut self, x: GPUDeviceArrayView<Idx, f32>, c: f32, conn: GPUDeviceConn) {
+    if self.is_packed() {
+      // TODO: size checks.
+      let len = self.flat_size();
+      let x = x.wait(conn.clone());
+      let mut y = self.wait_mut(conn.clone());
+      let mut stream = conn.cuda_stream();
+      // TODO: error handling.
+      unsafe { gpudevicemem_rdiv_constant_flat_map_f32(
           sz2uint(len),
           c,
           x.as_dptr(),
