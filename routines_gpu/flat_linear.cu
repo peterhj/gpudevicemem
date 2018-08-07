@@ -116,3 +116,25 @@ extern "C" void gpudevicemem_flat_mult_add_f32(
   gpudevicemem_flat_mult_add_kernel<float><<<cfg->flat_grid_dim(len), cfg->flat_block_dim(), 0, stream>>>(
       len, lx, rx, shift, y);
 }
+
+template <typename T>
+__global__ void gpudevicemem_flat_rdiv_inplace_kernel(
+    uint32_t len,
+    const T* x,
+    T* y)
+{
+  for (uint32_t idx = gtindex(); idx < len; idx += gtcount()) {
+    y[idx] = y[idx] / x[idx];
+  }
+}
+
+extern "C" void gpudevicemem_flat_rdiv_inplace_f32(
+    uint32_t len,
+    const float *x,
+    float *y,
+    const KernelConfig *cfg,
+    cudaStream_t stream)
+{
+  gpudevicemem_flat_rdiv_inplace_kernel<float><<<cfg->flat_grid_dim(len), cfg->flat_block_dim(), 0, stream>>>(
+      len, x, y);
+}
