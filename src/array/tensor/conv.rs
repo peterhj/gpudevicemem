@@ -20,7 +20,7 @@ use ::array::*;
 //use arithmetic::{PseudoField, PseudoRing};
 use cuda_dnn::*;
 use cuda_dnn::ffi::*;
-use float::stub::*;
+#[cfg(feature = "f16")] use float::stub::*;
 use num_traits::identities::*;
 
 use std::collections::{HashMap};
@@ -209,6 +209,7 @@ pub trait GPUDataTyped {
 
 impl GPUDataTyped for f32       { fn gpu_data_ty() -> GPUDataType { GPUDataType::Fp32 } }
 impl GPUDataTyped for f64       { fn gpu_data_ty() -> GPUDataType { GPUDataType::Fp64 } }
+#[cfg(feature = "f16")]
 impl GPUDataTyped for f16_stub  { fn gpu_data_ty() -> GPUDataType { GPUDataType::Fp16 } }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -383,7 +384,14 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
           match math_mode {
             GPUMathMode::Fp32 => f32::cudnn_data_ty(),
             GPUMathMode::Fp64 => f64::cudnn_data_ty(),
-            GPUMathMode::Fp16 | GPUMathMode::Fp16MMA => f16_stub::cudnn_data_ty(),
+            GPUMathMode::Fp16 | GPUMathMode::Fp16MMA => {
+              #[cfg(feature = "f16")] {
+                f16_stub::cudnn_data_ty()
+              }
+              #[cfg(not(feature = "f16"))] {
+                panic!("'f16' feature was not enabled");
+              }
+            }
           },
       ).is_ok());
       if shape.groups > 1 {
@@ -433,7 +441,14 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
           match math_mode {
             GPUMathMode::Fp32 => f32::cudnn_data_ty(),
             GPUMathMode::Fp64 => f64::cudnn_data_ty(),
-            GPUMathMode::Fp16 | GPUMathMode::Fp16MMA => f16_stub::cudnn_data_ty(),
+            GPUMathMode::Fp16 | GPUMathMode::Fp16MMA => {
+              #[cfg(feature = "f16")] {
+                f16_stub::cudnn_data_ty()
+              }
+              #[cfg(not(feature = "f16"))] {
+                panic!("'f16' feature was not enabled");
+              }
+            }
           },
       ).is_ok());
       if shape.groups > 1 {
@@ -623,7 +638,14 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
           match math_mode {
             GPUMathMode::Fp32 => f32::cudnn_data_ty(),
             GPUMathMode::Fp64 => f64::cudnn_data_ty(),
-            GPUMathMode::Fp16 | GPUMathMode::Fp16MMA => f16_stub::cudnn_data_ty(),
+            GPUMathMode::Fp16 | GPUMathMode::Fp16MMA => {
+              #[cfg(feature = "f16")] {
+                f16_stub::cudnn_data_ty()
+              }
+              #[cfg(not(feature = "f16"))] {
+                panic!("'f16' feature was not enabled");
+              }
+            }
           },
       ).is_ok());
       if shape.groups > 1 {
@@ -673,7 +695,14 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
           match math_mode {
             GPUMathMode::Fp32 => f32::cudnn_data_ty(),
             GPUMathMode::Fp64 => f64::cudnn_data_ty(),
-            GPUMathMode::Fp16 | GPUMathMode::Fp16MMA => f16_stub::cudnn_data_ty(),
+            GPUMathMode::Fp16 | GPUMathMode::Fp16MMA => {
+              #[cfg(feature = "f16")] {
+                f16_stub::cudnn_data_ty()
+              }
+              #[cfg(not(feature = "f16"))] {
+                panic!("'f16' feature was not enabled");
+              }
+            }
           },
       ).is_ok());
       if shape.groups > 1 {
@@ -772,7 +801,14 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
           match math_mode {
             GPUMathMode::Fp32 => f32::cudnn_data_ty(),
             GPUMathMode::Fp64 => f64::cudnn_data_ty(),
-            GPUMathMode::Fp16 | GPUMathMode::Fp16MMA => f16_stub::cudnn_data_ty(),
+            GPUMathMode::Fp16 | GPUMathMode::Fp16MMA => {
+              #[cfg(feature = "f16")] {
+                f16_stub::cudnn_data_ty()
+              }
+              #[cfg(not(feature = "f16"))] {
+                panic!("'f16' feature was not enabled");
+              }
+            }
           },
       ).is_ok());
       if shape.groups > 1 {
@@ -822,7 +858,14 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
           match math_mode {
             GPUMathMode::Fp32 => f32::cudnn_data_ty(),
             GPUMathMode::Fp64 => f64::cudnn_data_ty(),
-            GPUMathMode::Fp16 | GPUMathMode::Fp16MMA => f16_stub::cudnn_data_ty(),
+            GPUMathMode::Fp16 | GPUMathMode::Fp16MMA => {
+              #[cfg(feature = "f16")] {
+                f16_stub::cudnn_data_ty()
+              }
+              #[cfg(not(feature = "f16"))] {
+                panic!("'f16' feature was not enabled");
+              }
+            }
           },
       ).is_ok());
       if shape.groups > 1 {
@@ -1009,7 +1052,14 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
           match math_mode {
             GPUMathMode::Fp32 => f32::cudnn_data_ty(),
             GPUMathMode::Fp64 => f64::cudnn_data_ty(),
-            GPUMathMode::Fp16 | GPUMathMode::Fp16MMA => f16_stub::cudnn_data_ty(),
+            GPUMathMode::Fp16 | GPUMathMode::Fp16MMA => {
+              #[cfg(feature = "f16")] {
+                f16_stub::cudnn_data_ty()
+              }
+              #[cfg(not(feature = "f16"))] {
+                panic!("'f16' feature was not enabled");
+              }
+            }
           },
       ).is_ok());
       if shape.groups > 1 {
@@ -1059,7 +1109,14 @@ where WTy: GPUDataTyped + CudnnDataTypeExt,
           match math_mode {
             GPUMathMode::Fp32 => f32::cudnn_data_ty(),
             GPUMathMode::Fp64 => f64::cudnn_data_ty(),
-            GPUMathMode::Fp16 | GPUMathMode::Fp16MMA => f16_stub::cudnn_data_ty(),
+            GPUMathMode::Fp16 | GPUMathMode::Fp16MMA => {
+              #[cfg(feature = "f16")] {
+                f16_stub::cudnn_data_ty()
+              }
+              #[cfg(not(feature = "f16"))] {
+                panic!("'f16' feature was not enabled");
+              }
+            }
           },
       ).is_ok());
       if shape.groups > 1 {

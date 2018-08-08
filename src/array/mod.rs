@@ -214,8 +214,8 @@ impl<Idx, T> Shape for GPUDeviceArray<Idx, T> where Idx: ArrayIndex, T: Copy {
   }
 }
 
-impl<Idx, T> SetShape for GPUDeviceArray<Idx, T> where Idx: ArrayIndex, T: Copy {
-  fn set_shape(&mut self, new_size: Idx) {
+impl<Idx, T> Reshape for GPUDeviceArray<Idx, T> where Idx: ArrayIndex, T: Copy {
+  fn reshape(&mut self, new_size: Idx) {
     // FIXME: allow changing the array size.
     assert_eq!(self.size, new_size);
   }
@@ -462,8 +462,8 @@ impl<Idx, T> Shape for GPUDeviceOuterBatchArray<Idx, T> where Idx: ArrayIndex, T
   }
 }
 
-impl<Idx, T> SetShape for GPUDeviceOuterBatchArray<Idx, T> where Idx: ArrayIndex, T: Copy {
-  fn set_shape(&mut self, new_shape: (Idx, usize)) {
+impl<Idx, T> Reshape for GPUDeviceOuterBatchArray<Idx, T> where Idx: ArrayIndex, T: Copy {
+  fn reshape(&mut self, new_shape: (Idx, usize)) {
     // FIXME: allow changing the array size.
     assert_eq!(self.size, new_shape.0);
     self.set_batch_size(new_shape.1);
