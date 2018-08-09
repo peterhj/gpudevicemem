@@ -88,6 +88,7 @@ fn main() {
     .whitelist_function("gpudevicemem_is_nonzero_flat_map_f32")
     .whitelist_function("gpudevicemem_is_zero_flat_map_f32")
     // "halo_ring.cu"
+    .whitelist_function("gpudevicemem_halo_ring_3d1_fill_f32")
     .whitelist_function("gpudevicemem_halo_ring_3d1_zero_lghost_f32")
     .whitelist_function("gpudevicemem_halo_ring_3d1_zero_rghost_f32")
     .whitelist_function("gpudevicemem_halo_ring_3d1_copy_ledge_to_buf_f32")
