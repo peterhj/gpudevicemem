@@ -45,6 +45,7 @@ fn main() {
     .file("routines_gpu/bcast_flat_linear.cu")
     .file("routines_gpu/flat_linear.cu")
     .file("routines_gpu/flat_map.cu")
+    .file("routines_gpu/halo_ring.cu")
     .file("routines_gpu/reduce.cu")
     .compile("libgpudevicemem_routines_gpu.a");
 
@@ -86,6 +87,17 @@ fn main() {
     .whitelist_function("gpudevicemem_online_average_flat_map_accum_f32")
     .whitelist_function("gpudevicemem_is_nonzero_flat_map_f32")
     .whitelist_function("gpudevicemem_is_zero_flat_map_f32")
+    // "halo_ring.cu"
+    .whitelist_function("gpudevicemem_halo_ring_3d1_zero_lghost_f32")
+    .whitelist_function("gpudevicemem_halo_ring_3d1_zero_rghost_f32")
+    .whitelist_function("gpudevicemem_halo_ring_3d1_copy_ledge_to_buf_f32")
+    .whitelist_function("gpudevicemem_halo_ring_3d1_copy_redge_to_buf_f32")
+    .whitelist_function("gpudevicemem_halo_ring_3d1_copy_buf_to_lghost_f32")
+    .whitelist_function("gpudevicemem_halo_ring_3d1_copy_buf_to_rghost_f32")
+    .whitelist_function("gpudevicemem_halo_ring_3d1_copy_lghost_to_buf_f32")
+    .whitelist_function("gpudevicemem_halo_ring_3d1_copy_rghost_to_buf_f32")
+    .whitelist_function("gpudevicemem_halo_ring_3d1_accumulate_buf_to_ledge_f32")
+    .whitelist_function("gpudevicemem_halo_ring_3d1_accumulate_buf_to_redge_f32")
     // "reduce.cu"
     .whitelist_function("gpudevicemem_sum_packed_deterministic_f32")
     .whitelist_function("gpudevicemem_sum_packed_accumulate_deterministic_f32")

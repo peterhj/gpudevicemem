@@ -293,6 +293,97 @@ void gpudevicemem_rcosh2_flat_map_f32(
     const struct KernelConfig *cfg,
     struct CUstream_st *stream);*/
 
+// "halo_ring.cu"
+
+void gpudevicemem_halo_ring_3d1_zero_lghost_f32(
+    uint32_t halo_radius,
+    uint32_t dim0,
+    uint32_t dim1,
+    uint32_t dim2,
+    float *arr,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream);
+void gpudevicemem_halo_ring_3d1_zero_rghost_f32(
+    uint32_t halo_radius,
+    uint32_t dim0,
+    uint32_t dim1,
+    uint32_t dim2,
+    float *arr,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream);
+void gpudevicemem_halo_ring_3d1_copy_ledge_to_buf_f32(
+    uint32_t halo_radius,
+    uint32_t dim0,
+    uint32_t dim1,
+    uint32_t dim2,
+    float *arr,
+    float *buf,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream);
+void gpudevicemem_halo_ring_3d1_copy_redge_to_buf_f32(
+    uint32_t halo_radius,
+    uint32_t dim0,
+    uint32_t dim1,
+    uint32_t dim2,
+    float *arr,
+    float *buf,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream);
+void gpudevicemem_halo_ring_3d1_copy_buf_to_lghost_f32(
+    uint32_t halo_radius,
+    uint32_t dim0,
+    uint32_t dim1,
+    uint32_t dim2,
+    float *arr,
+    float *buf,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream);
+void gpudevicemem_halo_ring_3d1_copy_buf_to_rghost_f32(
+    uint32_t halo_radius,
+    uint32_t dim0,
+    uint32_t dim1,
+    uint32_t dim2,
+    float *arr,
+    float *buf,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream);
+void gpudevicemem_halo_ring_3d1_copy_lghost_to_buf_f32(
+    uint32_t halo_radius,
+    uint32_t dim0,
+    uint32_t dim1,
+    uint32_t dim2,
+    float *arr,
+    float *buf,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream);
+void gpudevicemem_halo_ring_3d1_copy_rghost_to_buf_f32(
+    uint32_t halo_radius,
+    uint32_t dim0,
+    uint32_t dim1,
+    uint32_t dim2,
+    float *arr,
+    float *buf,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream);
+void gpudevicemem_halo_ring_3d1_accumulate_buf_to_ledge_f32(
+    uint32_t halo_radius,
+    uint32_t dim0,
+    uint32_t dim1,
+    uint32_t dim2,
+    float *arr,
+    float *buf,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream);
+void gpudevicemem_halo_ring_3d1_accumulate_buf_to_redge_f32(
+    uint32_t halo_radius,
+    uint32_t dim0,
+    uint32_t dim1,
+    uint32_t dim2,
+    float *arr,
+    float *buf,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream);
+
 // "reduce.cu"
 
 void gpudevicemem_sum_packed_deterministic_f32(
