@@ -304,6 +304,15 @@ void gpudevicemem_halo_ring_3d1_fill_f32(
     float *dst_arr,
     const struct KernelConfig *cfg,
     struct CUstream_st *stream);
+void gpudevicemem_halo_ring_3d1_unfill_f32(
+    uint32_t halo_radius,
+    uint32_t dim0,
+    uint32_t dim1,
+    uint32_t dim2,
+    float *src_arr,
+    float *dst_arr,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream);
 void gpudevicemem_halo_ring_3d1_zero_lghost_f32(
     uint32_t halo_radius,
     uint32_t dim0,

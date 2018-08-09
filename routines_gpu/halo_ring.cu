@@ -174,6 +174,33 @@ extern "C" void gpudevicemem_halo_ring_3d1_fill_f32(
       src_arr);
 }
 
+extern "C" void gpudevicemem_halo_ring_3d1_unfill_f32(
+    uint32_t halo_radius,
+    uint32_t dim0,
+    uint32_t dim1,
+    uint32_t dim2,
+    float *src_arr,
+    float *dst_arr,
+    const KernelConfig *cfg,
+    cudaStream_t stream)
+{
+  uint32_t region_dim1 = dim1 - halo_radius * 2;
+  uint32_t region_len = dim0 * region_dim1 * dim2;
+  gpudevicemem_halo_ring_3d1_generic_wide_kernel<
+      InteriorRegion,
+      float,
+      CopyOp<float, ToBufDir>
+  ><<<cfg->flat_grid_dim(region_len), cfg->flat_block_dim(), 0, stream>>>(
+      region_len,
+      region_dim1,
+      halo_radius,
+      dim0,
+      dim1,
+      dim2,
+      src_arr,
+      dst_arr);
+}
+
 extern "C" void gpudevicemem_halo_ring_3d1_zero_lghost_f32(
     uint32_t halo_radius,
     uint32_t dim0,
