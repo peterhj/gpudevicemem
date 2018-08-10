@@ -90,6 +90,14 @@ void gpudevicemem_bcast_flat_add_I1b_IO2abc_inplace_packed_f32(
     float *rx,
     const struct KernelConfig *cfg,
     struct CUstream_st *stream);
+void gpudevicemem_bcast_flat_mult_I1a_I2ab_Oab_packed_f32(
+    uint32_t bcast_dim,
+    uint32_t outer_dim,
+    const float *lx,
+    const float *rx,
+    float *y,
+    const struct KernelConfig *cfg,
+    struct CUstream_st *stream);
 void gpudevicemem_bcast_flat_mult_I1b_I2ab_Oab_packed_f32(
     uint32_t inner_dim,
     uint32_t bcast_dim,

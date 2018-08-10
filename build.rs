@@ -64,6 +64,7 @@ fn main() {
     .whitelist_function("gpudevicemem_bcast_flat_add_I1a_IO2ab_inplace_packed_f32")
     .whitelist_function("gpudevicemem_bcast_flat_add_I1b_I2abc_Oabc_packed_f32")
     .whitelist_function("gpudevicemem_bcast_flat_add_I1b_IO2abc_inplace_packed_f32")
+    .whitelist_function("gpudevicemem_bcast_flat_mult_I1a_I2ab_Oab_packed_f32")
     .whitelist_function("gpudevicemem_bcast_flat_mult_I1b_I2ab_Oab_packed_f32")
     .whitelist_function("gpudevicemem_bcast_flat_mult_add_I1b_I2ab_I3b_Oab_packed_f32")
     .whitelist_function("gpudevicemem_bcast_flat_mult_I1b_I2abc_Oabc_packed_f32")
