@@ -862,11 +862,12 @@ impl<Idx, T> GPUDeviceArrayViewMut<Idx, T> where Idx: ArrayIndex, T: Copy {
   }
 }
 
-pub trait GPUDeviceArrayViewMutOpsExt {
+pub trait GPUDeviceArrayViewMutOpsExt<T> where T: Copy {
   type ViewTy;
 
   fn set_zeros(&mut self, conn: GPUDeviceConn);
   fn fill_random(&mut self, rng: &mut CurandGenerator, conn: GPUDeviceConn);
+  fn fill_uniform(&mut self, rng: &mut CurandGenerator, conn: GPUDeviceConn);
   fn copy(&mut self, src: Self::ViewTy, conn: GPUDeviceConn);
   fn add(&mut self, x: Self::ViewTy, conn: GPUDeviceConn);
   fn mult(&mut self, x: Self::ViewTy, conn: GPUDeviceConn);
@@ -874,7 +875,7 @@ pub trait GPUDeviceArrayViewMutOpsExt {
   fn is_nonzero(&mut self, x: Self::ViewTy, conn: GPUDeviceConn);
 }
 
-pub trait GPUDeviceArrayViewMutConstantOpsExt<T>: GPUDeviceArrayViewMutOpsExt where T: Copy {
+pub trait GPUDeviceArrayViewMutConstantOpsExt<T>: GPUDeviceArrayViewMutOpsExt<T> where T: Copy {
   fn set_constant(&mut self, c: T, conn: GPUDeviceConn);
   fn add_constant_inplace(&mut self, c: T, conn: GPUDeviceConn);
   fn add_constant(&mut self, c: T, x: Self::ViewTy, conn: GPUDeviceConn);
@@ -885,7 +886,7 @@ pub trait GPUDeviceArrayViewMutConstantOpsExt<T>: GPUDeviceArrayViewMutOpsExt wh
   fn online_average(&mut self, c: T, x: Self::ViewTy, conn: GPUDeviceConn);
 }
 
-impl<Idx, T> GPUDeviceArrayViewMutOpsExt for GPUDeviceArrayViewMut<Idx, T> where Idx: ArrayIndex, T: Copy + 'static {
+impl<Idx, T> GPUDeviceArrayViewMutOpsExt<T> for GPUDeviceArrayViewMut<Idx, T> where Idx: ArrayIndex, T: Copy + 'static {
   type ViewTy = GPUDeviceArrayView<Idx, T>;
 
   default fn set_zeros(&mut self, conn: GPUDeviceConn) {
@@ -894,6 +895,10 @@ impl<Idx, T> GPUDeviceArrayViewMutOpsExt for GPUDeviceArrayViewMut<Idx, T> where
   }
 
   default fn fill_random(&mut self, rng: &mut CurandGenerator, conn: GPUDeviceConn) {
+    unimplemented!();
+  }
+
+  default fn fill_uniform(&mut self, rng: &mut CurandGenerator, conn: GPUDeviceConn) {
     unimplemented!();
   }
 
@@ -941,7 +946,7 @@ impl<Idx, T> GPUDeviceArrayViewMutOpsExt for GPUDeviceArrayViewMut<Idx, T> where
   }
 }
 
-impl<Idx, T> GPUDeviceArrayViewMutOpsExt for GPUDeviceArrayViewMut<Idx, T> where Idx: ArrayIndex, T: ZeroBits + 'static {
+impl<Idx, T> GPUDeviceArrayViewMutOpsExt<T> for GPUDeviceArrayViewMut<Idx, T> where Idx: ArrayIndex, T: ZeroBits + 'static {
   default fn set_zeros(&mut self, conn: GPUDeviceConn) {
     if self.is_packed() {
       let mut dst = self.wait_mut(conn.clone());
@@ -973,7 +978,21 @@ impl<Idx, T> GPUDeviceArrayViewMutOpsExt for GPUDeviceArrayViewMut<Idx, T> where
   }
 }
 
-impl<Idx> GPUDeviceArrayViewMutOpsExt for GPUDeviceArrayViewMut<Idx, f32> where Idx: ArrayIndex {
+impl<Idx> GPUDeviceArrayViewMutOpsExt<f32> for GPUDeviceArrayViewMut<Idx, f32> where Idx: ArrayIndex {
+  fn fill_uniform(&mut self, rng: &mut CurandGenerator, conn: GPUDeviceConn) {
+    if self.is_packed() {
+      let len = self.flat_size();
+      let mut dst = self.wait_mut(conn.clone());
+      let mut stream = conn.cuda_stream();
+      // TODO: error handling.
+      assert!(rng.set_stream(&mut stream).is_ok());
+      let res = unsafe { rng.generate_uniform(dst.as_mut_dptr(), len) };
+      assert!(res.is_ok());
+    } else {
+      unimplemented!();
+    }
+  }
+
   fn add(&mut self, x: GPUDeviceArrayView<Idx, f32>, conn: GPUDeviceConn) {
     assert_eq!(x.size(), self.size());
     if x.is_packed() && self.is_packed() {
@@ -1059,7 +1078,23 @@ impl<Idx> GPUDeviceArrayViewMutOpsExt for GPUDeviceArrayViewMut<Idx, f32> where 
   }
 }
 
-impl<Idx> GPUDeviceArrayViewMutOpsExt for GPUDeviceArrayViewMut<Idx, u32> where Idx: ArrayIndex {
+impl<Idx> GPUDeviceArrayViewMutOpsExt<f64> for GPUDeviceArrayViewMut<Idx, f64> where Idx: ArrayIndex {
+  fn fill_uniform(&mut self, rng: &mut CurandGenerator, conn: GPUDeviceConn) {
+    if self.is_packed() {
+      let len = self.flat_size();
+      let mut dst = self.wait_mut(conn.clone());
+      let mut stream = conn.cuda_stream();
+      // TODO: error handling.
+      assert!(rng.set_stream(&mut stream).is_ok());
+      let res = unsafe { rng.generate_uniform64(dst.as_mut_dptr(), len) };
+      assert!(res.is_ok());
+    } else {
+      unimplemented!();
+    }
+  }
+}
+
+impl<Idx> GPUDeviceArrayViewMutOpsExt<u32> for GPUDeviceArrayViewMut<Idx, u32> where Idx: ArrayIndex {
   fn fill_random(&mut self, rng: &mut CurandGenerator, conn: GPUDeviceConn) {
     if self.is_packed() {
       let len = self.flat_size();
