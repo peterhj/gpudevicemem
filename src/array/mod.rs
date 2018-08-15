@@ -29,6 +29,7 @@ use std::ops::{RangeBounds};
 use std::sync::{Arc};
 
 pub mod linalg;
+pub mod parallel;
 pub mod tensor;
 
 #[inline]
@@ -886,6 +887,23 @@ pub trait GPUDeviceArrayViewMutConstantOpsExt<T>: GPUDeviceArrayViewMutOpsExt<T>
   fn online_average(&mut self, c: T, x: Self::ViewTy, conn: GPUDeviceConn);
 }
 
+pub trait GPUDeviceArrayViewHalo1dOpsExt<T> where T: Copy {
+  fn pack_left_boundary(&self, halo_radius: usize, axis: isize, dst_buf: &mut GPUDeviceArrayViewMut1d<T>, conn: GPUDeviceConn);
+  fn pack_right_boundary(&self, halo_radius: usize, axis: isize, dst_buf: &mut GPUDeviceArrayViewMut1d<T>, conn: GPUDeviceConn);
+  fn pack_left_ghost(&self, halo_radius: usize, axis: isize, dst_buf: &mut GPUDeviceArrayViewMut1d<T>, conn: GPUDeviceConn);
+  fn pack_right_ghost(&self, halo_radius: usize, axis: isize, dst_buf: &mut GPUDeviceArrayViewMut1d<T>, conn: GPUDeviceConn);
+}
+
+pub trait GPUDeviceArrayViewMutHalo1dOpsExt<T>: GPUDeviceArrayViewMutOpsExt<T> where T: Copy {
+  fn zero_ghost(&mut self, halo_radius: usize, axis: isize, conn: GPUDeviceConn);
+  fn copy_pad(&mut self, halo_radius: usize, axis: isize, src: Self::ViewTy, conn: GPUDeviceConn);
+  fn copy_unpad(&mut self, halo_radius: usize, axis: isize, src: Self::ViewTy, conn: GPUDeviceConn);
+  fn unpack_into_left_ghost(&mut self, halo_radius: usize, axis: isize, src: GPUDeviceArrayView1d<T>, conn: GPUDeviceConn);
+  fn unpack_into_right_ghost(&mut self, halo_radius: usize, axis: isize, src: GPUDeviceArrayView1d<T>, conn: GPUDeviceConn);
+  fn unpack_accumulate_into_left_boundary(&mut self, halo_radius: usize, axis: isize, src: GPUDeviceArrayView1d<T>, conn: GPUDeviceConn);
+  fn unpack_accumulate_into_right_boundary(&mut self, halo_radius: usize, axis: isize, src: GPUDeviceArrayView1d<T>, conn: GPUDeviceConn);
+}
+
 impl<Idx, T> GPUDeviceArrayViewMutOpsExt<T> for GPUDeviceArrayViewMut<Idx, T> where Idx: ArrayIndex, T: Copy + 'static {
   type ViewTy = GPUDeviceArrayView<Idx, T>;
 
@@ -1364,6 +1382,124 @@ impl<Idx> GPUDeviceArrayViewMutConstantOpsExt<f32> for GPUDeviceArrayViewMut<Idx
           conn.cuda_kernel_cfg() as *const _,
           stream.as_mut_ptr(),
       ) };
+    } else {
+      unimplemented!();
+    }
+  }
+}
+
+impl GPUDeviceArrayViewHalo1dOpsExt<f32> for GPUDeviceArrayView4d<f32> {
+  fn pack_left_boundary(&self, halo_radius: usize, axis: isize, dst_buf: &mut GPUDeviceArrayViewMut1d<f32>, conn: GPUDeviceConn) {
+    // TODO: size checks.
+    assert!(self.size().index_at(axis) > 2 * halo_radius);
+    let packed = self.is_packed() && dst_buf.is_packed();
+    if packed {
+      let src_arr = self.wait(conn.clone());
+      let mut dst_buf = dst_buf.wait_mut(conn.clone());
+      match axis {
+        // TODO
+        2 => {
+          let mut stream = conn.cuda_stream();
+          unsafe { gpudevicemem_halo_ring_3d1_copy_ledge_to_buf_f32(
+              sz2uint(halo_radius),
+              sz2uint(src_arr.inner().size().index_cut(3).index_cut(2).flat_len()),
+              sz2uint(src_arr.inner().size().index_at(2)),
+              sz2uint(src_arr.inner().size().index_at(3)),
+              src_arr.as_dptr() as *mut f32,
+              dst_buf.as_mut_dptr(),
+              conn.cuda_kernel_cfg() as *const _,
+              stream.as_mut_ptr(),
+          ) };
+        }
+        _ => unimplemented!(),
+      }
+    } else {
+      unimplemented!();
+    }
+  }
+
+  fn pack_right_boundary(&self, halo_radius: usize, axis: isize, dst_buf: &mut GPUDeviceArrayViewMut1d<f32>, conn: GPUDeviceConn) {
+    // TODO: size checks.
+    assert!(self.size().index_at(axis) > 2 * halo_radius);
+    let packed = self.is_packed() && dst_buf.is_packed();
+    if packed {
+      let src_arr = self.wait(conn.clone());
+      let mut dst_buf = dst_buf.wait_mut(conn.clone());
+      match axis {
+        // TODO
+        2 => {
+          let mut stream = conn.cuda_stream();
+          unsafe { gpudevicemem_halo_ring_3d1_copy_redge_to_buf_f32(
+              sz2uint(halo_radius),
+              sz2uint(src_arr.inner().size().index_cut(3).index_cut(2).flat_len()),
+              sz2uint(src_arr.inner().size().index_at(2)),
+              sz2uint(src_arr.inner().size().index_at(3)),
+              src_arr.as_dptr() as *mut f32,
+              dst_buf.as_mut_dptr(),
+              conn.cuda_kernel_cfg() as *const _,
+              stream.as_mut_ptr(),
+          ) };
+        }
+        _ => unimplemented!(),
+      }
+    } else {
+      unimplemented!();
+    }
+  }
+
+  fn pack_left_ghost(&self, halo_radius: usize, axis: isize, dst_buf: &mut GPUDeviceArrayViewMut1d<f32>, conn: GPUDeviceConn) {
+    // TODO: size checks.
+    assert!(self.size().index_at(axis) > 2 * halo_radius);
+    let packed = self.is_packed() && dst_buf.is_packed();
+    if packed {
+      let src_arr = self.wait(conn.clone());
+      let mut dst_buf = dst_buf.wait_mut(conn.clone());
+      match axis {
+        // TODO
+        2 => {
+          let mut stream = conn.cuda_stream();
+          unsafe { gpudevicemem_halo_ring_3d1_copy_lghost_to_buf_f32(
+              sz2uint(halo_radius),
+              sz2uint(src_arr.inner().size().index_cut(3).index_cut(2).flat_len()),
+              sz2uint(src_arr.inner().size().index_at(2)),
+              sz2uint(src_arr.inner().size().index_at(3)),
+              src_arr.as_dptr() as *mut f32,
+              dst_buf.as_mut_dptr(),
+              conn.cuda_kernel_cfg() as *const _,
+              stream.as_mut_ptr(),
+          ) };
+        }
+        _ => unimplemented!(),
+      }
+    } else {
+      unimplemented!();
+    }
+  }
+
+  fn pack_right_ghost(&self, halo_radius: usize, axis: isize, dst_buf: &mut GPUDeviceArrayViewMut1d<f32>, conn: GPUDeviceConn) {
+    // TODO: size checks.
+    assert!(self.size().index_at(axis) > 2 * halo_radius);
+    let packed = self.is_packed() && dst_buf.is_packed();
+    if packed {
+      let src_arr = self.wait(conn.clone());
+      let mut dst_buf = dst_buf.wait_mut(conn.clone());
+      match axis {
+        // TODO
+        2 => {
+          let mut stream = conn.cuda_stream();
+          unsafe { gpudevicemem_halo_ring_3d1_copy_rghost_to_buf_f32(
+              sz2uint(halo_radius),
+              sz2uint(src_arr.inner().size().index_cut(3).index_cut(2).flat_len()),
+              sz2uint(src_arr.inner().size().index_at(2)),
+              sz2uint(src_arr.inner().size().index_at(3)),
+              src_arr.as_dptr() as *mut f32,
+              dst_buf.as_mut_dptr(),
+              conn.cuda_kernel_cfg() as *const _,
+              stream.as_mut_ptr(),
+          ) };
+        }
+        _ => unimplemented!(),
+      }
     } else {
       unimplemented!();
     }
