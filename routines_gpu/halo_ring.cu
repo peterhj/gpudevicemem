@@ -24,7 +24,7 @@ struct InteriorRegion {
   }
 };
 
-struct LEdgeRegion {
+struct LBoundaryRegion {
   __forceinline__ __device__ static uint32_t CalculateArrayIndex(uint32_t ridx, uint32_t halo_radius, uint32_t arr_dim) {
     return ridx + halo_radius;
   }
@@ -36,7 +36,7 @@ struct LGhostRegion {
   }
 };
 
-struct REdgeRegion {
+struct RBoundaryRegion {
   __forceinline__ __device__ static uint32_t CalculateArrayIndex(uint32_t ridx, uint32_t halo_radius, uint32_t arr_dim) {
     return ridx + arr_dim - halo_radius * 2;
   }
@@ -226,7 +226,7 @@ extern "C" void gpudevicemem_halo_ring_3d1_zero_rghost_f32(
       NULL);
 }
 
-extern "C" void gpudevicemem_halo_ring_3d1_copy_ledge_to_buf_f32(
+extern "C" void gpudevicemem_halo_ring_3d1_copy_lboundary_to_buf_f32(
     uint32_t halo_radius,
     uint32_t dim0,
     uint32_t dim1,
@@ -238,7 +238,7 @@ extern "C" void gpudevicemem_halo_ring_3d1_copy_ledge_to_buf_f32(
 {
   uint32_t region_len = dim0 * halo_radius * dim2;
   gpudevicemem_halo_ring_3d1_generic_packed_kernel<
-      LEdgeRegion,
+      LBoundaryRegion,
       float,
       CopyOp<float, ToBufDir>
   ><<<cfg->flat_grid_dim(region_len), cfg->flat_block_dim(), 0, stream>>>(
@@ -252,7 +252,7 @@ extern "C" void gpudevicemem_halo_ring_3d1_copy_ledge_to_buf_f32(
       region_buf);
 }
 
-extern "C" void gpudevicemem_halo_ring_3d1_copy_redge_to_buf_f32(
+extern "C" void gpudevicemem_halo_ring_3d1_copy_rboundary_to_buf_f32(
     uint32_t halo_radius,
     uint32_t dim0,
     uint32_t dim1,
@@ -264,7 +264,7 @@ extern "C" void gpudevicemem_halo_ring_3d1_copy_redge_to_buf_f32(
 {
   uint32_t region_len = dim0 * halo_radius * dim2;
   gpudevicemem_halo_ring_3d1_generic_packed_kernel<
-      REdgeRegion,
+      RBoundaryRegion,
       float,
       CopyOp<float, ToBufDir>
   ><<<cfg->flat_grid_dim(region_len), cfg->flat_block_dim(), 0, stream>>>(
@@ -382,7 +382,7 @@ extern "C" void gpudevicemem_halo_ring_3d1_copy_rghost_to_buf_f32(
       region_buf);
 }
 
-extern "C" void gpudevicemem_halo_ring_3d1_accumulate_buf_to_ledge_f32(
+extern "C" void gpudevicemem_halo_ring_3d1_accumulate_buf_to_lboundary_f32(
     uint32_t halo_radius,
     uint32_t dim0,
     uint32_t dim1,
@@ -394,7 +394,7 @@ extern "C" void gpudevicemem_halo_ring_3d1_accumulate_buf_to_ledge_f32(
 {
   uint32_t region_len = dim0 * halo_radius * dim2;
   gpudevicemem_halo_ring_3d1_generic_packed_kernel<
-      LEdgeRegion,
+      LBoundaryRegion,
       float,
       AccumulateOp<float, FromBufDir>
   ><<<cfg->flat_grid_dim(region_len), cfg->flat_block_dim(), 0, stream>>>(
@@ -408,7 +408,7 @@ extern "C" void gpudevicemem_halo_ring_3d1_accumulate_buf_to_ledge_f32(
       region_buf);
 }
 
-extern "C" void gpudevicemem_halo_ring_3d1_accumulate_buf_to_redge_f32(
+extern "C" void gpudevicemem_halo_ring_3d1_accumulate_buf_to_rboundary_f32(
     uint32_t halo_radius,
     uint32_t dim0,
     uint32_t dim1,
@@ -420,7 +420,7 @@ extern "C" void gpudevicemem_halo_ring_3d1_accumulate_buf_to_redge_f32(
 {
   uint32_t region_len = dim0 * halo_radius * dim2;
   gpudevicemem_halo_ring_3d1_generic_packed_kernel<
-      REdgeRegion,
+      RBoundaryRegion,
       float,
       AccumulateOp<float, FromBufDir>
   ><<<cfg->flat_grid_dim(region_len), cfg->flat_block_dim(), 0, stream>>>(

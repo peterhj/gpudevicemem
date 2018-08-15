@@ -1392,6 +1392,8 @@ impl GPUDeviceArrayViewHalo1dOpsExt<f32> for GPUDeviceArrayView4d<f32> {
   fn pack_left_boundary(&self, halo_radius: usize, axis: isize, dst_buf: &mut GPUDeviceArrayViewMut1d<f32>, conn: GPUDeviceConn) {
     // TODO: size checks.
     assert!(self.size().index_at(axis) > 2 * halo_radius);
+    let (prefix_ndsize, axis_ndsize, suffix_ndsize) = self.size()._to_nd().splice_at(axis);
+    assert_eq!(prefix_ndsize.flat_len() * halo_radius * suffix_ndsize.flat_len(), dst_buf.size());
     let packed = self.is_packed() && dst_buf.is_packed();
     if packed {
       let src_arr = self.wait(conn.clone());
@@ -1399,12 +1401,15 @@ impl GPUDeviceArrayViewHalo1dOpsExt<f32> for GPUDeviceArrayView4d<f32> {
       match axis {
         // TODO
         2 => {
+          assert_eq!(prefix_ndsize.flat_len(), src_arr.inner().size().index_cut(3).index_cut(2).flat_len());
+          assert_eq!(axis_ndsize.flat_len(), src_arr.inner().size().index_at(2));
+          assert_eq!(suffix_ndsize.flat_len(), src_arr.inner().size().index_at(3));
           let mut stream = conn.cuda_stream();
-          unsafe { gpudevicemem_halo_ring_3d1_copy_ledge_to_buf_f32(
+          unsafe { gpudevicemem_halo_ring_3d1_copy_lboundary_to_buf_f32(
               sz2uint(halo_radius),
-              sz2uint(src_arr.inner().size().index_cut(3).index_cut(2).flat_len()),
-              sz2uint(src_arr.inner().size().index_at(2)),
-              sz2uint(src_arr.inner().size().index_at(3)),
+              sz2uint(prefix_ndsize.flat_len()),
+              sz2uint(axis_ndsize.flat_len()),
+              sz2uint(suffix_ndsize.flat_len()),
               src_arr.as_dptr() as *mut f32,
               dst_buf.as_mut_dptr(),
               conn.cuda_kernel_cfg() as *const _,
@@ -1421,6 +1426,8 @@ impl GPUDeviceArrayViewHalo1dOpsExt<f32> for GPUDeviceArrayView4d<f32> {
   fn pack_right_boundary(&self, halo_radius: usize, axis: isize, dst_buf: &mut GPUDeviceArrayViewMut1d<f32>, conn: GPUDeviceConn) {
     // TODO: size checks.
     assert!(self.size().index_at(axis) > 2 * halo_radius);
+    let (prefix_ndsize, axis_ndsize, suffix_ndsize) = self.size()._to_nd().splice_at(axis);
+    assert_eq!(prefix_ndsize.flat_len() * halo_radius * suffix_ndsize.flat_len(), dst_buf.size());
     let packed = self.is_packed() && dst_buf.is_packed();
     if packed {
       let src_arr = self.wait(conn.clone());
@@ -1428,12 +1435,15 @@ impl GPUDeviceArrayViewHalo1dOpsExt<f32> for GPUDeviceArrayView4d<f32> {
       match axis {
         // TODO
         2 => {
+          assert_eq!(prefix_ndsize.flat_len(), src_arr.inner().size().index_cut(3).index_cut(2).flat_len());
+          assert_eq!(axis_ndsize.flat_len(), src_arr.inner().size().index_at(2));
+          assert_eq!(suffix_ndsize.flat_len(), src_arr.inner().size().index_at(3));
           let mut stream = conn.cuda_stream();
-          unsafe { gpudevicemem_halo_ring_3d1_copy_redge_to_buf_f32(
+          unsafe { gpudevicemem_halo_ring_3d1_copy_rboundary_to_buf_f32(
               sz2uint(halo_radius),
-              sz2uint(src_arr.inner().size().index_cut(3).index_cut(2).flat_len()),
-              sz2uint(src_arr.inner().size().index_at(2)),
-              sz2uint(src_arr.inner().size().index_at(3)),
+              sz2uint(prefix_ndsize.flat_len()),
+              sz2uint(axis_ndsize.flat_len()),
+              sz2uint(suffix_ndsize.flat_len()),
               src_arr.as_dptr() as *mut f32,
               dst_buf.as_mut_dptr(),
               conn.cuda_kernel_cfg() as *const _,
@@ -1450,6 +1460,8 @@ impl GPUDeviceArrayViewHalo1dOpsExt<f32> for GPUDeviceArrayView4d<f32> {
   fn pack_left_ghost(&self, halo_radius: usize, axis: isize, dst_buf: &mut GPUDeviceArrayViewMut1d<f32>, conn: GPUDeviceConn) {
     // TODO: size checks.
     assert!(self.size().index_at(axis) > 2 * halo_radius);
+    let (prefix_ndsize, axis_ndsize, suffix_ndsize) = self.size()._to_nd().splice_at(axis);
+    assert_eq!(prefix_ndsize.flat_len() * halo_radius * suffix_ndsize.flat_len(), dst_buf.size());
     let packed = self.is_packed() && dst_buf.is_packed();
     if packed {
       let src_arr = self.wait(conn.clone());
@@ -1457,12 +1469,15 @@ impl GPUDeviceArrayViewHalo1dOpsExt<f32> for GPUDeviceArrayView4d<f32> {
       match axis {
         // TODO
         2 => {
+          assert_eq!(prefix_ndsize.flat_len(), src_arr.inner().size().index_cut(3).index_cut(2).flat_len());
+          assert_eq!(axis_ndsize.flat_len(), src_arr.inner().size().index_at(2));
+          assert_eq!(suffix_ndsize.flat_len(), src_arr.inner().size().index_at(3));
           let mut stream = conn.cuda_stream();
           unsafe { gpudevicemem_halo_ring_3d1_copy_lghost_to_buf_f32(
               sz2uint(halo_radius),
-              sz2uint(src_arr.inner().size().index_cut(3).index_cut(2).flat_len()),
-              sz2uint(src_arr.inner().size().index_at(2)),
-              sz2uint(src_arr.inner().size().index_at(3)),
+              sz2uint(prefix_ndsize.flat_len()),
+              sz2uint(axis_ndsize.flat_len()),
+              sz2uint(suffix_ndsize.flat_len()),
               src_arr.as_dptr() as *mut f32,
               dst_buf.as_mut_dptr(),
               conn.cuda_kernel_cfg() as *const _,
@@ -1479,6 +1494,8 @@ impl GPUDeviceArrayViewHalo1dOpsExt<f32> for GPUDeviceArrayView4d<f32> {
   fn pack_right_ghost(&self, halo_radius: usize, axis: isize, dst_buf: &mut GPUDeviceArrayViewMut1d<f32>, conn: GPUDeviceConn) {
     // TODO: size checks.
     assert!(self.size().index_at(axis) > 2 * halo_radius);
+    let (prefix_ndsize, axis_ndsize, suffix_ndsize) = self.size()._to_nd().splice_at(axis);
+    assert_eq!(prefix_ndsize.flat_len() * halo_radius * suffix_ndsize.flat_len(), dst_buf.size());
     let packed = self.is_packed() && dst_buf.is_packed();
     if packed {
       let src_arr = self.wait(conn.clone());
@@ -1486,12 +1503,15 @@ impl GPUDeviceArrayViewHalo1dOpsExt<f32> for GPUDeviceArrayView4d<f32> {
       match axis {
         // TODO
         2 => {
+          assert_eq!(prefix_ndsize.flat_len(), src_arr.inner().size().index_cut(3).index_cut(2).flat_len());
+          assert_eq!(axis_ndsize.flat_len(), src_arr.inner().size().index_at(2));
+          assert_eq!(suffix_ndsize.flat_len(), src_arr.inner().size().index_at(3));
           let mut stream = conn.cuda_stream();
           unsafe { gpudevicemem_halo_ring_3d1_copy_rghost_to_buf_f32(
               sz2uint(halo_radius),
-              sz2uint(src_arr.inner().size().index_cut(3).index_cut(2).flat_len()),
-              sz2uint(src_arr.inner().size().index_at(2)),
-              sz2uint(src_arr.inner().size().index_at(3)),
+              sz2uint(prefix_ndsize.flat_len()),
+              sz2uint(axis_ndsize.flat_len()),
+              sz2uint(suffix_ndsize.flat_len()),
               src_arr.as_dptr() as *mut f32,
               dst_buf.as_mut_dptr(),
               conn.cuda_kernel_cfg() as *const _,

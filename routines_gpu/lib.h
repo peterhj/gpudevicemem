@@ -337,7 +337,7 @@ void gpudevicemem_halo_ring_3d1_zero_rghost_f32(
     float *arr,
     const struct KernelConfig *cfg,
     struct CUstream_st *stream);
-void gpudevicemem_halo_ring_3d1_copy_ledge_to_buf_f32(
+void gpudevicemem_halo_ring_3d1_copy_lboundary_to_buf_f32(
     uint32_t halo_radius,
     uint32_t dim0,
     uint32_t dim1,
@@ -346,7 +346,7 @@ void gpudevicemem_halo_ring_3d1_copy_ledge_to_buf_f32(
     float *region_buf,
     const struct KernelConfig *cfg,
     struct CUstream_st *stream);
-void gpudevicemem_halo_ring_3d1_copy_redge_to_buf_f32(
+void gpudevicemem_halo_ring_3d1_copy_rboundary_to_buf_f32(
     uint32_t halo_radius,
     uint32_t dim0,
     uint32_t dim1,
@@ -391,7 +391,7 @@ void gpudevicemem_halo_ring_3d1_copy_rghost_to_buf_f32(
     float *region_buf,
     const struct KernelConfig *cfg,
     struct CUstream_st *stream);
-void gpudevicemem_halo_ring_3d1_accumulate_buf_to_ledge_f32(
+void gpudevicemem_halo_ring_3d1_accumulate_buf_to_lboundary_f32(
     uint32_t halo_radius,
     uint32_t dim0,
     uint32_t dim1,
@@ -400,7 +400,7 @@ void gpudevicemem_halo_ring_3d1_accumulate_buf_to_ledge_f32(
     float *region_buf,
     const struct KernelConfig *cfg,
     struct CUstream_st *stream);
-void gpudevicemem_halo_ring_3d1_accumulate_buf_to_redge_f32(
+void gpudevicemem_halo_ring_3d1_accumulate_buf_to_rboundary_f32(
     uint32_t halo_radius,
     uint32_t dim0,
     uint32_t dim1,
