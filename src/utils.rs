@@ -18,6 +18,7 @@ limitations under the License.
 
 use ::*;
 
+use cuda::ffi::driver_types::*;
 use cuda::ffi::runtime::*;
 
 pub fn enable_gpu_peer_access(pools: &mut Vec<GPUDeviceStreamPool>) {
@@ -43,9 +44,9 @@ pub fn enable_gpu_peer_access(pools: &mut Vec<GPUDeviceStreamPool>) {
               0,
           ) };
           match status {
-            cudaError_cudaSuccess => {}
+            cudaError_cudaSuccess |
             cudaError_cudaErrorPeerAccessAlreadyEnabled => {}
-            _ => panic!(),
+            e => panic!(),
           }
         }
         _ => panic!(),

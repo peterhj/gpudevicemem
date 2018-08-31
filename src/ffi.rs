@@ -22,7 +22,7 @@ pub mod routines_gpu {
 
 use ::{GPUDeviceArchSummary};
 
-use cuda::ffi::runtime::{CUstream_st};
+use cuda::ffi::driver::{CUstream_st};
 
 #[derive(Clone, Copy)]
 #[repr(C)]

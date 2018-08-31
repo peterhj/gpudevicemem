@@ -1526,6 +1526,72 @@ impl GPUDeviceArrayViewHalo1dOpsExt<f32> for GPUDeviceArrayView4d<f32> {
   }
 }
 
+impl GPUDeviceArrayViewMutHalo1dOpsExt<f32> for GPUDeviceArrayViewMut4d<f32> {
+  fn zero_ghost(&mut self, halo_radius: usize, axis: isize, conn: GPUDeviceConn) {
+    // TODO: size checks.
+    let (prefix_ndsize, axis_ndsize, suffix_ndsize) = self.size()._to_nd().splice_at(axis);
+    assert!(axis_ndsize.flat_len() > 2 * halo_radius);
+    let packed = self.is_packed();
+    if packed {
+      let mut dst_arr = self.wait_mut(conn.clone());
+      match axis {
+        // TODO
+        2 => {
+          assert_eq!(prefix_ndsize.flat_len(), dst_arr.inner().size().index_cut(3).index_cut(2).flat_len());
+          assert_eq!(axis_ndsize.flat_len(), dst_arr.inner().size().index_at(2));
+          assert_eq!(suffix_ndsize.flat_len(), dst_arr.inner().size().index_at(3));
+          let mut stream = conn.cuda_stream();
+          unsafe { gpudevicemem_halo_ring_3d1_zero_lghost_f32(
+              sz2uint(halo_radius),
+              sz2uint(prefix_ndsize.flat_len()),
+              sz2uint(axis_ndsize.flat_len()),
+              sz2uint(suffix_ndsize.flat_len()),
+              dst_arr.as_mut_dptr(),
+              conn.cuda_kernel_cfg() as *const _,
+              stream.as_mut_ptr(),
+          ) };
+          unsafe { gpudevicemem_halo_ring_3d1_zero_rghost_f32(
+              sz2uint(halo_radius),
+              sz2uint(prefix_ndsize.flat_len()),
+              sz2uint(axis_ndsize.flat_len()),
+              sz2uint(suffix_ndsize.flat_len()),
+              dst_arr.as_mut_dptr(),
+              conn.cuda_kernel_cfg() as *const _,
+              stream.as_mut_ptr(),
+          ) };
+        }
+        _ => unimplemented!(),
+      }
+    } else {
+      unimplemented!();
+    }
+  }
+
+  fn copy_pad(&mut self, halo_radius: usize, axis: isize, src: GPUDeviceArrayView4d<f32>, conn: GPUDeviceConn) {
+    // TODO
+  }
+
+  fn copy_unpad(&mut self, halo_radius: usize, axis: isize, src: GPUDeviceArrayView4d<f32>, conn: GPUDeviceConn) {
+    // TODO
+  }
+
+  fn unpack_into_left_ghost(&mut self, halo_radius: usize, axis: isize, src: GPUDeviceArrayView1d<f32>, conn: GPUDeviceConn) {
+    // TODO
+  }
+
+  fn unpack_into_right_ghost(&mut self, halo_radius: usize, axis: isize, src: GPUDeviceArrayView1d<f32>, conn: GPUDeviceConn) {
+    // TODO
+  }
+
+  fn unpack_accumulate_into_left_boundary(&mut self, halo_radius: usize, axis: isize, src: GPUDeviceArrayView1d<f32>, conn: GPUDeviceConn) {
+    // TODO
+  }
+
+  fn unpack_accumulate_into_right_boundary(&mut self, halo_radius: usize, axis: isize, src: GPUDeviceArrayView1d<f32>, conn: GPUDeviceConn) {
+    // TODO
+  }
+}
+
 /*impl<Idx, Range, T> View<Range> for GPUDeviceArrayView<Idx, T> where Idx: ArrayIndex, Range: ArrayRange<Idx> + Copy, T: Copy {
   fn view(self, range: Range) -> Self {
     // TODO: bounds check.

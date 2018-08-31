@@ -21,6 +21,7 @@ limitations under the License.
 extern crate arrayidx;
 extern crate cuda;
 extern crate cuda_blas;
+#[cfg(feature = "nccl")] extern crate cuda_coll;
 extern crate cuda_dnn;
 extern crate cuda_rand;
 extern crate float;
